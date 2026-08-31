@@ -1,0 +1,15 @@
+# Variáveis de ambiente
+backend/.env
+.env
+
+# Dados locais (nunca versionar: contém dados de usuários)
+backend/data.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Editor
+.vscode/
+.idea/
+.DS_Store

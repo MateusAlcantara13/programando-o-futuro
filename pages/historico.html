@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Histórico — Programando o Futuro</title>
+  <link rel="stylesheet" href="../styles/global.css" />
+  <link rel="stylesheet" href="../styles/fonts.css" />
+  <link rel="stylesheet" href="../styles/sidebar.css" />
+  <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg" />
+  <style>
+    * { box-sizing: border-box; }
+
+    .navbar { position: fixed; top: 0; left: 0; right: 0; z-index: 100; padding: 1rem 0; background: rgba(6,11,20,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.06); transition: all 0.3s; }
+    .navbar.scrolled { padding: 0.7rem 0; background: rgba(6,11,20,0.98); }
+    .navbar .container { display: flex; align-items: center; justify-content: space-between; max-width: 1200px; margin: 0 auto; padding: 0 2rem; flex-wrap: nowrap; }
+    .nav-logo { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; font-size: 1rem; color: #f0f6ff; text-decoration: none; flex-shrink: 0; }
+    .nav-links { display: flex; gap: 2.2rem; list-style: none; }
+    .nav-links a { font-family: 'Manrope', sans-serif; font-size: 0.88rem; color: rgba(255,255,255,0.55); text-decoration: none; transition: color 0.2s; position: relative; }
+    .nav-links a.active { color: #f0f6ff; }
+    .nav-links a.active::after { content: ''; position: absolute; bottom: -4px; left: 0; right: 0; height: 2px; background: #2563eb; border-radius: 2px; }
+    .nav-links a:hover { color: #f0f6ff; }
+    .nav-user { display: flex; align-items: center; gap: 0.8rem; }
+    .nav-user span { font-family: 'Manrope', sans-serif; font-size: 0.88rem; color: rgba(255,255,255,0.6); }
+    .nav-avatar { width: 36px; height: 36px; background: #2563eb; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; font-size: 0.8rem; color: #fff; cursor: pointer; }
+    .btn-hamburger { display: none; background: none; border: none; color: #f0f6ff; cursor: pointer; align-items: center; }
+
+    main { max-width: 780px; margin: 0 auto; padding: 110px 2rem 4rem; }
+
+    /* HERO */
+    .hero { margin-bottom: 2.5rem; }
+    .hero-label { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.68rem; font-weight: 700; color: #3b82f6; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 0.6rem; }
+    .hero-title { font-family: 'Plus Jakarta Sans', sans-serif; font-size: clamp(1.8rem, 4vw, 2.5rem); font-weight: 900; color: #f0f6ff; letter-spacing: -0.03em; line-height: 1.15; margin-bottom: 0.6rem; }
+    .hero-title span { color: #3b82f6; }
+    .hero-desc { font-family: 'Manrope', sans-serif; font-size: 0.88rem; color: rgba(255,255,255,0.4); line-height: 1.7; }
+
+    /* SECTION */
+    .section { margin-bottom: 2.5rem; }
+    .section-title { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.68rem; font-weight: 700; color: rgba(255,255,255,0.28); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 1rem; }
+
+    /* RESULTADO CARD */
+    .resultado-card { background: rgba(17,24,39,0.9); border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: 1.8rem; display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; flex-wrap: wrap; transition: border-color 0.2s; }
+    .resultado-card:hover { border-color: rgba(37,99,235,0.22); }
+    .resultado-info { flex: 1; min-width: 180px; }
+    .resultado-area-label { font-family: 'Manrope', sans-serif; font-size: 0.72rem; color: rgba(255,255,255,0.3); margin-bottom: 0.35rem; }
+    .resultado-area { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 1.25rem; font-weight: 800; color: #f0f6ff; margin-bottom: 0.5rem; line-height: 1.2; }
+    .resultado-data { font-family: 'Manrope', sans-serif; font-size: 0.72rem; color: rgba(255,255,255,0.28); }
+    .btn-ver-resultado { padding: 0.75rem 1.4rem; background: #2563eb; color: #fff; border: none; border-radius: 12px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.82rem; font-weight: 700; cursor: pointer; text-decoration: none; display: inline-block; transition: all 0.2s; white-space: nowrap; }
+    .btn-ver-resultado:hover { background: #3b82f6; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(37,99,235,0.35); }
+
+    /* SEM RESULTADO */
+    .empty-card { background: rgba(17,24,39,0.9); border: 1px solid rgba(255,255,255,0.07); border-radius: 18px; padding: 2.5rem; text-align: center; }
+    .empty-icon { font-size: 2.2rem; margin-bottom: 0.9rem; }
+    .empty-title { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 1rem; font-weight: 800; color: #f0f6ff; margin-bottom: 0.4rem; }
+    .empty-desc { font-family: 'Manrope', sans-serif; font-size: 0.82rem; color: rgba(255,255,255,0.32); line-height: 1.6; margin-bottom: 1.4rem; }
+    .btn-iniciar { padding: 0.75rem 1.5rem; background: #2563eb; color: #fff; border: none; border-radius: 12px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.82rem; font-weight: 700; cursor: pointer; text-decoration: none; display: inline-block; transition: all 0.2s; }
+    .btn-iniciar:hover { background: #3b82f6; }
+
+    /* ANALISE DA IA */
+    .analise-card { background: rgba(17,24,39,0.9); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 1.3rem 1.4rem; display: flex; gap: 1rem; align-items: flex-start; }
+    .analise-icon { width: 34px; height: 34px; background: rgba(37,99,235,0.12); border: 1px solid rgba(37,99,235,0.2); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .analise-text { font-family: 'Manrope', sans-serif; font-size: 0.84rem; color: rgba(255,255,255,0.55); line-height: 1.7; }
+    .area-sec-card { background: rgba(17,24,39,0.9); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 1.1rem 1.3rem; margin-bottom: 0.55rem; }
+    .area-sec-card:last-child { margin-bottom: 0; }
+    .area-sec-nome { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.9rem; font-weight: 700; color: #f0f6ff; margin-bottom: 0.45rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+    .area-sec-pct { font-family: 'Manrope', sans-serif; font-size: 0.72rem; color: #60a5fa; font-weight: 700; white-space: nowrap; }
+    .prog-bar-track { height: 4px; background: rgba(37,99,235,0.12); border-radius: 2px; margin-bottom: 0.65rem; overflow: hidden; }
+    .prog-bar-fill { height: 100%; background: linear-gradient(90deg, #2563eb, #60a5fa); border-radius: 2px; transition: width 0.6s ease; }
+    .area-sec-just { font-family: 'Manrope', sans-serif; font-size: 0.78rem; color: rgba(255,255,255,0.38); line-height: 1.6; }
+    .ia-perfil-card { background: rgba(17,24,39,0.9); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 1.3rem 1.4rem; }
+    .ia-perfil-label { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 1rem; font-weight: 800; color: #f0f6ff; margin-bottom: 0.4rem; }
+    .ia-perfil-resumo { font-family: 'Manrope', sans-serif; font-size: 0.84rem; color: rgba(255,255,255,0.48); line-height: 1.7; }
+    .skills-wrap { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .skill-chip { padding: 0.35rem 0.85rem; background: rgba(37,99,235,0.1); border: 1px solid rgba(37,99,235,0.22); border-radius: 20px; font-family: 'Manrope', sans-serif; font-size: 0.75rem; font-weight: 600; color: #93c5fd; }
+    .destaque-subsec { margin-bottom: 0.65rem; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.65rem; font-weight: 700; color: rgba(255,255,255,0.22); letter-spacing: 0.1em; text-transform: uppercase; }
+    .destaque-table { background: rgba(17,24,39,0.9); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; overflow: hidden; }
+    .destaque-row { display: flex; align-items: flex-start; gap: 1rem; padding: 0.85rem 1.3rem; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .destaque-row:last-child { border-bottom: none; }
+    .destaque-label { font-family: 'Manrope', sans-serif; font-size: 0.74rem; color: rgba(255,255,255,0.3); min-width: 155px; flex-shrink: 0; padding-top: 0.05rem; }
+    .destaque-valor { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.82rem; font-weight: 600; color: #f0f6ff; line-height: 1.4; }
+    .melhoria-lista { display: flex; flex-direction: column; gap: 0.5rem; }
+    .melhoria-item { display: flex; align-items: flex-start; gap: 0.75rem; background: rgba(17,24,39,0.9); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 0.85rem 1.2rem; }
+    .melhoria-icon { color: #60a5fa; flex-shrink: 0; line-height: 0; margin-top: 0.18rem; }
+    .melhoria-text { font-family: 'Manrope', sans-serif; font-size: 0.82rem; color: rgba(255,255,255,0.52); line-height: 1.55; }
+    .subsec-gap { margin-bottom: 1.2rem; }
+
+    /* DANGER */
+    .danger-card { background: rgba(220,38,38,0.10); border: 1px solid rgba(220,38,38,0.3); border-radius: 18px; padding: 1.8rem; }
+    .danger-header { display: flex; align-items: flex-start; gap: 1rem; margin-bottom: 1.2rem; }
+    .danger-icon { flex-shrink: 0; line-height: 0; margin-top: 0.1rem; }
+    .danger-title { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.98rem; font-weight: 800; color: #fca5a5; margin-bottom: 0.4rem; }
+    .danger-text { font-family: 'Manrope', sans-serif; font-size: 0.82rem; color: rgba(252,165,165,0.65); line-height: 1.65; }
+    .danger-text strong { color: #fca5a5; }
+    .btn-reset { padding: 0.75rem 1.4rem; background: #dc2626; color: #fff; border: none; border-radius: 12px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.82rem; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+    .btn-reset:hover { background: #ef4444; }
+
+    /* MODAL */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); z-index: 600; align-items: center; justify-content: center; padding: 1.5rem; }
+    .modal-overlay.open { display: flex; }
+    .modal-card { background: #0d1424; border: 1px solid rgba(255,255,255,0.09); border-radius: 20px; padding: 2rem; width: 100%; max-width: 420px; animation: fadeUp 0.3s ease both; }
+    .modal-title { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 1.1rem; font-weight: 800; color: #f0f6ff; margin-bottom: 0.75rem; }
+    .modal-text { font-family: 'Manrope', sans-serif; font-size: 0.84rem; color: rgba(255,255,255,0.48); line-height: 1.65; margin-bottom: 1.5rem; }
+    .modal-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    .btn-cancelar { flex: 1; padding: 0.8rem 1rem; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.65); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; font-family: 'Manrope', sans-serif; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+    .btn-cancelar:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .btn-confirmar { flex: 1; padding: 0.8rem 1rem; background: #dc2626; color: #fff; border: none; border-radius: 12px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.82rem; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+    .btn-confirmar:hover { background: #ef4444; }
+    .btn-confirmar:disabled { opacity: 0.5; cursor: not-allowed; }
+    .modal-erro { font-family: 'Manrope', sans-serif; font-size: 0.78rem; color: #fca5a5; margin-top: 0.75rem; display: none; }
+
+    /* LOADING */
+    .loader-inline { display: inline-block; width: 24px; height: 24px; border: 2px solid rgba(37,99,235,0.15); border-top-color: #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* FOOTER */
+    footer { background: rgba(13,20,36,0.95); border-top: 1px solid rgba(255,255,255,0.05); padding: 2rem 0; margin-top: 2rem; }
+    .footer-inner { max-width: 1200px; margin: 0 auto; padding: 0 2rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
+    .footer-logo { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; font-size: 0.95rem; color: #f0f6ff; }
+    .footer-copy { font-family: 'Manrope', sans-serif; font-size: 0.72rem; color: rgba(255,255,255,0.25); margin-top: 0.2rem; }
+    .footer-links { display: flex; gap: 2rem; list-style: none; }
+    .footer-links a { font-family: 'Manrope', sans-serif; font-size: 0.8rem; color: rgba(255,255,255,0.3); text-decoration: none; }
+    .footer-links a:hover { color: rgba(255,255,255,0.6); }
+
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-up { animation: fadeUp 0.5s ease both; }
+    .delay-1 { animation-delay: 0.08s; }
+    .delay-2 { animation-delay: 0.16s; }
+
+    /* PERFIL OVERLAY */
+    .perfil-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); z-index: 500; align-items: center; justify-content: center; padding: 1.5rem; }
+    .perfil-overlay.open { display: flex; }
+    .perfil-card { background: #0d1424; border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 2rem; width: 100%; max-width: 400px; position: relative; animation: fadeUp 0.3s ease both; }
+    .perfil-close { position: absolute; top: 1.2rem; right: 1.2rem; background: none; border: none; color: rgba(255,255,255,0.4); cursor: pointer; }
+    .perfil-close:hover { color: #fff; }
+    .perfil-avatar-wrap { display: flex; flex-direction: column; align-items: center; margin-bottom: 1.5rem; }
+    .perfil-avatar { width: 68px; height: 68px; background: #2563eb; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 1.35rem; font-weight: 900; color: #fff; margin-bottom: 0.5rem; }
+    .perfil-nome-display { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 1rem; font-weight: 800; color: #f0f6ff; }
+    .perfil-email-display { font-family: 'Manrope', sans-serif; font-size: 0.78rem; color: rgba(255,255,255,0.32); margin-top: 0.2rem; }
+    .btn-logout { width: 100%; padding: 0.75rem; background: rgba(220,38,38,0.1); color: #fca5a5; border: 1px solid rgba(220,38,38,0.2); border-radius: 12px; font-family: 'Manrope', sans-serif; font-size: 0.82rem; font-weight: 600; cursor: pointer; margin-top: 1.2rem; transition: all 0.2s; }
+    .btn-logout:hover { background: rgba(220,38,38,0.2); }
+
+    @media (max-width: 600px) {
+      .nav-links, .nav-user { display: none; }
+      .btn-hamburger { display: flex; }
+      .navbar .container { padding: 0 1.2rem; }
+      .resultado-card { flex-direction: column; align-items: flex-start; }
+      .modal-actions { flex-direction: column; }
+    }
+  </style>
+</head>
+<body style="background:#060b14; min-height:100vh; overflow-x:hidden;">
+
+  <div style="position:fixed;inset:0;pointer-events:none;z-index:0;">
+    <div style="position:absolute;top:-100px;left:50%;transform:translateX(-50%);width:700px;height:600px;background:radial-gradient(ellipse,rgba(37,99,235,0.12) 0%,transparent 65%);"></div>
+  </div>
+
+  <!-- NAVBAR -->
+  <header class="navbar" id="navbar">
+    <div class="container">
+      <a href="inicial_mapa_feito.html" class="nav-logo font-jakarta">Programando o Futuro</a>
+      <nav>
+        <ul class="nav-links">
+          <li><a href="inicial_mapa_feito.html" class="font-manrope">Início</a></li>
+          <li><a href="mapa_carreira.html" class="font-manrope">Mapa de Carreira</a></li>
+          <li><a href="historico.html" class="active font-manrope">Histórico</a></li>
+          <li><a href="oportunidades.html" class="font-manrope">Oportunidades</a></li>
+        </ul>
+      </nav>
+      <div class="nav-user">
+        <span class="font-manrope" id="navGreeting">Olá</span>
+        <div class="nav-avatar font-jakarta" id="navAvatar" onclick="abrirPerfil()" style="cursor:pointer">PF</div>
+      </div>
+      <button class="btn-hamburger" onclick="openSidebar()">
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main style="position:relative;z-index:1;">
+
+    <!-- HERO -->
+    <div class="hero fade-up">
+      <div class="hero-label font-jakarta">Meu Histórico</div>
+      <h1 class="hero-title font-jakarta">Resultado e <span>respostas</span></h1>
+      <p class="hero-desc font-manrope">Veja o que a IA analisou sobre você, suas respostas do teste e gerencie seus dados.</p>
+    </div>
+
+    <!-- SEÇÃO 1: RESULTADO ATUAL -->
+    <section class="section fade-up delay-1">
+      <div class="section-title font-jakarta">Resultado atual</div>
+      <div id="resultadoWrap">
+        <div style="text-align:center;padding:2.5rem 0;">
+          <span class="loader-inline"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- SEÇÃO 2: RACIOCÍNIO DA IA -->
+    <section class="section fade-up delay-2" id="analiseSection" style="display:none;">
+      <div class="section-title font-jakarta">Raciocínio da IA</div>
+      <div id="analiseConteudo"></div>
+    </section>
+
+    <!-- SEÇÃO 3: RESETAR ANÁLISE -->
+    <section class="section fade-up delay-2">
+      <div class="section-title font-jakarta">Resetar análise</div>
+      <p class="font-manrope" style="font-size:0.88rem;color:rgba(255,255,255,0.42);line-height:1.7;margin-bottom:1.2rem;">Se suas respostas mudaram ou você quer recomeçar do zero, pode refazer o teste. Atenção: isso apaga seu resultado atual permanentemente.</p>
+      <div class="danger-card">
+        <div class="danger-header">
+          <div class="danger-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </div>
+          <div>
+            <div class="danger-title">Atenção — isso não pode ser desfeito</div>
+            <div class="danger-text">
+              Ao refazer o teste, <strong>todas as suas respostas atuais serão apagadas permanentemente</strong> e a IA vai gerar uma análise completamente nova com base nas suas novas respostas.<br><br>
+              Seu resultado anterior também será substituído e não poderá ser recuperado.
+            </div>
+          </div>
+        </div>
+        <button class="btn-reset font-jakarta" onclick="abrirModalReset()">Refazer o teste do zero</button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <div id="footer-placeholder"></div>
+
+  <!-- MODAL DE CONFIRMAÇÃO -->
+  <div class="modal-overlay" id="modalReset">
+    <div class="modal-card">
+      <div class="modal-title font-jakarta">Tem certeza absoluta?</div>
+      <div class="modal-text font-manrope">Você vai apagar suas respostas e seu resultado atual. Essa ação é irreversível. Deseja continuar?</div>
+      <div class="modal-actions">
+        <button class="btn-cancelar font-manrope" onclick="fecharModalReset()">Não, manter meus dados</button>
+        <button class="btn-confirmar font-jakarta" id="btnConfirmarReset" onclick="resetar()">Sim, quero recomeçar</button>
+      </div>
+      <div class="modal-erro" id="modalErro"></div>
+    </div>
+  </div>
+
+  <!-- PERFIL OVERLAY -->
+  <div class="perfil-overlay" id="perfilOverlay">
+    <div class="perfil-card">
+      <button class="perfil-close" onclick="fecharPerfil()">
+        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+      <div class="perfil-avatar-wrap">
+        <div class="perfil-avatar font-jakarta" id="perfilAvatar">PF</div>
+        <div class="perfil-nome-display font-jakarta" id="perfilNomeDisplay">—</div>
+        <div class="perfil-email-display font-manrope" id="perfilEmailDisplay">—</div>
+      </div>
+      <button class="btn-logout font-manrope" onclick="authApi.logout()">Sair da conta</button>
+    </div>
+  </div>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/sidebar.js"></script>
+    <script src="../js/footer.js"></script>
+  <script>
+    if (!auth.isLogged()) window.location.href = 'login.html';
+
+    const usuario = auth.getUser();
+    if (usuario) {
+      document.getElementById('navGreeting').textContent = `Olá, ${(usuario.nome || '').split(' ')[0]}`;
+      document.getElementById('navAvatar').textContent = usuario.avatar_iniciais || '??';
+    }
+
+    window.addEventListener('scroll', () => {
+      document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 20);
+    });
+
+    function abrirPerfil() {
+      const u = auth.getUser();
+      if (u) {
+        document.getElementById('perfilAvatar').textContent = u.avatar_iniciais || '??';
+        document.getElementById('perfilNomeDisplay').textContent = u.nome || '';
+        document.getElementById('perfilEmailDisplay').textContent = u.email || '';
+      }
+      document.getElementById('perfilOverlay').classList.add('open');
+    }
+    function fecharPerfil() { document.getElementById('perfilOverlay').classList.remove('open'); }
+
+    function abrirModalReset() { document.getElementById('modalReset').classList.add('open'); }
+    function fecharModalReset() {
+      document.getElementById('modalReset').classList.remove('open');
+      document.getElementById('modalErro').style.display = 'none';
+    }
+
+    function formatarData(isoStr) {
+      if (!isoStr) return '';
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return '';
+      const pad = n => String(n).padStart(2, '0');
+      return `Analisado em ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} às ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function escHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function renderAnalise(r) {
+      const section = document.getElementById('analiseSection');
+      const conteudo = document.getElementById('analiseConteudo');
+      const partes = [];
+
+      if (r.areaPrincipalJustificativa) {
+        partes.push(`
+          <div class="analise-card subsec-gap">
+            <div class="analise-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            </div>
+            <div class="analise-text font-manrope">${escHtml(r.areaPrincipalJustificativa)}</div>
+          </div>
+        `);
+      }
+
+      const areas = r.areasSecundarias || [];
+      if (areas.length > 0) {
+        const areasHtml = areas.map(a => {
+          const pct = Math.min(Number(a.percentual || a.compatibilidade || 0), 100);
+          return `
+            <div class="area-sec-card">
+              <div class="area-sec-nome font-jakarta">
+                <span>${escHtml(a.nome || a.area || '')}</span>
+                <span class="area-sec-pct">${pct}%</span>
+              </div>
+              <div class="prog-bar-track"><div class="prog-bar-fill" style="width:${pct}%"></div></div>
+              ${a.justificativa ? `<div class="area-sec-just font-manrope">${escHtml(a.justificativa)}</div>` : ''}
+            </div>
+          `;
+        }).join('');
+        partes.push(`<div class="subsec-gap">${areasHtml}</div>`);
+      }
+
+      if (r.perfilLabel || r.perfilResumoClaro) {
+        partes.push(`
+          <div class="ia-perfil-card subsec-gap">
+            ${r.perfilLabel ? `<div class="ia-perfil-label font-jakarta">${escHtml(r.perfilLabel)}</div>` : ''}
+            ${r.perfilResumoClaro ? `<div class="ia-perfil-resumo font-manrope">${escHtml(r.perfilResumoClaro)}</div>` : ''}
+          </div>
+        `);
+      }
+
+      const skills = r.skills || [];
+      if (skills.length > 0) {
+        partes.push(`<div class="skills-wrap subsec-gap">${skills.map(s => `<span class="skill-chip font-manrope">${escHtml(s)}</span>`).join('')}</div>`);
+      }
+
+      const destaque = r.respostasDestaque || {};
+      const campos = [
+        { label: 'Preferência de trabalho', key: 'preferenciaTrabalho' },
+        { label: 'Ambiente ideal',           key: 'ambienteIdeal' },
+        { label: 'Principal desafio',        key: 'principalDesafio' },
+        { label: 'Sonho',                    key: 'sonho' },
+      ];
+      const linhas = campos
+        .filter(c => destaque[c.key])
+        .map(c => `<div class="destaque-row"><div class="destaque-label font-manrope">${c.label}</div><div class="destaque-valor font-jakarta">${escHtml(destaque[c.key])}</div></div>`)
+        .join('');
+      if (linhas) {
+        partes.push(`
+          <div class="subsec-gap">
+            <div class="destaque-subsec font-jakarta">O que você disse que mais pesou na análise</div>
+            <div class="destaque-table">${linhas}</div>
+          </div>
+        `);
+      }
+
+      const melhoria = r.pontosDeMelhoria || [];
+      if (melhoria.length > 0) {
+        const melhoriaHtml = melhoria.map(p => `
+          <div class="melhoria-item">
+            <span class="melhoria-icon"><span style="width:8px;height:8px;background:#3b82f6;border-radius:50%;flex-shrink:0;margin-top:4px;display:inline-block;"></span></span>
+            <span class="melhoria-text font-manrope">${escHtml(p)}</span>
+          </div>
+        `).join('');
+        partes.push(`<div class="melhoria-lista">${melhoriaHtml}</div>`);
+      }
+
+      if (partes.length > 0) {
+        conteudo.innerHTML = partes.join('');
+        section.style.display = '';
+      }
+    }
+
+    async function carregar() {
+      let resultado = null;
+      try {
+        resultado = await api.get('/api/resultado');
+      } catch (e) { /* 404 = sem resultado */ }
+
+      const wrap = document.getElementById('resultadoWrap');
+      if (resultado && resultado.areaPrincipal) {
+        const dataStr = formatarData(resultado._atualizado_em);
+        wrap.innerHTML = `
+          <div class="resultado-card">
+            <div class="resultado-info">
+              <div class="resultado-area-label font-manrope">Área recomendada pela IA</div>
+              <div class="resultado-area font-jakarta">${escHtml(resultado.areaPrincipal)}</div>
+              ${dataStr ? `<div class="resultado-data font-manrope">${dataStr}</div>` : ''}
+            </div>
+            <a href="resultado.html" class="btn-ver-resultado font-jakarta">Ver resultado completo</a>
+          </div>
+        `;
+        renderAnalise(resultado);
+      } else {
+        wrap.innerHTML = `
+          <div class="empty-card">
+            <div class="empty-icon">📊</div>
+            <div class="empty-title font-jakarta">Nenhum resultado ainda</div>
+            <div class="empty-desc font-manrope">Você ainda não completou o teste inicial.</div>
+            <a href="perguntas.html" class="btn-iniciar font-jakarta">Fazer o teste agora</a>
+          </div>
+        `;
+      }
+    }
+
+    async function resetar() {
+      const btn = document.getElementById('btnConfirmarReset');
+      const erroEl = document.getElementById('modalErro');
+      btn.disabled = true;
+      btn.textContent = 'Apagando...';
+      erroEl.style.display = 'none';
+      try {
+        await api.delete('/api/testeinicial/resetar');
+        localStorage.removeItem('pf_respostas_teste_api');
+        localStorage.removeItem('pf_job_id');
+        window.location.href = 'perguntas.html';
+      } catch (e) {
+        erroEl.textContent = e?.detail?.erro || e?.erro || 'Erro ao resetar. Tente novamente.';
+        erroEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Sim, quero recomeçar';
+      }
+    }
+
+    carregar();
+  </script>
+</body>
+</html>

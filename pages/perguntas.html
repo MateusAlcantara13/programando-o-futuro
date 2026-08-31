@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Teste de Perfil — Programando o Futuro</title>
+  <link rel="stylesheet" href="../styles/global.css" />
+  <link rel="stylesheet" href="../styles/fonts.css" />
+  <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg" />
+  <style>
+    body {
+      font-family: 'Manrope', sans-serif;
+      background: #060b14;
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+    }
+
+    .bg-glow {
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    }
+    .bg-glow::before {
+      content: '';
+      position: absolute; top: -100px; left: 50%; transform: translateX(-50%);
+      width: 600px; height: 500px;
+      background: radial-gradient(ellipse, rgba(37,99,235,0.1) 0%, transparent 65%);
+    }
+
+    /* NAV */
+    .test-nav {
+      position: relative; z-index: 10;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.2rem 2.5rem;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .nav-logo {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-weight: 700; font-size: 0.95rem; color: #f0f6ff;
+      text-decoration: none;
+    }
+    .nav-progress-text {
+        display: flex;
+        justify-content: right;
+        margin-right: 5rem;
+        margin-top: 1rem;
+        gap: 0.3rem;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 1rem; font-weight: 700;
+      color: rgba(255,255,255,0.4);
+    }
+    .nav-progress-text span { color: #3b82f6; }
+    .btn-sair {
+      font-family: 'Manrope', sans-serif;
+      font-size: 0.78rem; color: rgba(255,255,255,0.3);
+      text-decoration: none; transition: color 0.2s;
+    }
+    .btn-sair:hover { color: rgba(255,255,255,0.7); }
+
+    /* PROGRESS BAR */
+    .progress-bar-wrap {
+      position: relative; z-index: 10;
+      padding: 0 2.5rem;
+      background: rgba(6,11,20,0.9);
+    }
+    .progress-bar-bg {
+      width: 100%; height: 3px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 2px; overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%; background: #2563eb;
+      border-radius: 2px;
+      transition: width 0.5s ease;
+    }
+
+    /* MAIN */
+    main {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      padding: 2rem; position: relative; z-index: 1;
+    }
+
+    .question-wrap {
+      max-width: 620px; width: 100%;
+    }
+
+    /* Pergunta */
+    .question-card {
+      animation: fadeSlide 0.4s ease both;
+    }
+    @keyframes fadeSlide {
+      from { opacity: 0; transform: translateX(30px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes fadeSlideBack {
+      from { opacity: 0; transform: translateX(-30px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    .question-card.going-back {
+      animation: fadeSlideBack 0.4s ease both;
+    }
+
+    .question-num {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 0.68rem; font-weight: 700;
+      color: #3b82f6; letter-spacing: 0.1em; text-transform: uppercase;
+      margin-bottom: 1rem;
+    }
+    .question-text {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: clamp(1.3rem, 3vw, 1.7rem);
+      font-weight: 800; color: #f0f6ff;
+      line-height: 1.3; margin-bottom: 2rem;
+      letter-spacing: -0.02em;
+    }
+
+    /* Opções */
+    .options-list {
+      display: flex; flex-direction: column; gap: 0.8rem;
+      margin-bottom: 2rem;
+    }
+    .option-btn {
+      width: 100%; padding: 1rem 1.2rem;
+      background: rgba(17,24,39,0.8);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px; text-align: left;
+      font-family: 'Manrope', sans-serif;
+      font-size: 0.9rem; font-weight: 500; color: rgba(255,255,255,0.7);
+      cursor: pointer; transition: all 0.2s;
+      display: flex; align-items: center; gap: 1rem;
+    }
+    .option-btn:hover {
+      border-color: rgba(37,99,235,0.4);
+      background: rgba(37,99,235,0.06);
+      color: #f0f6ff;
+    }
+    .option-btn.selected {
+      border-color: #2563eb;
+      background: rgba(37,99,235,0.12);
+      color: #f0f6ff;
+    }
+    .option-letter {
+      width: 28px; height: 28px; flex-shrink: 0;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 0.72rem; font-weight: 700;
+      color: rgba(255,255,255,0.4);
+      transition: all 0.2s;
+    }
+    .option-btn.selected .option-letter {
+      background: #2563eb; border-color: #2563eb; color: #fff;
+    }
+    .option-btn:hover .option-letter {
+      border-color: rgba(37,99,235,0.5);
+      color: rgba(255,255,255,0.7);
+    }
+
+    /* Navegação */
+    .nav-btns {
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    }
+    .btn-voltar {
+      display: flex; align-items: center; gap: 0.4rem;
+      padding: 0.75rem 1.4rem;
+      background: transparent; color: rgba(255,255,255,0.4);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 0.85rem; font-weight: 600;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .btn-voltar:hover {
+      border-color: rgba(255,255,255,0.25);
+      color: rgba(255,255,255,0.7);
+    }
+    .btn-voltar:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .btn-proximo {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.75rem 1.8rem;
+      background: #2563eb; color: #fff;
+      border: none; border-radius: 12px;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 0.9rem; font-weight: 700;
+      cursor: pointer; transition: all 0.25s;
+      opacity: 0.4; pointer-events: none;
+    }
+    .btn-proximo.enabled {
+      opacity: 1; pointer-events: all;
+    }
+    .btn-proximo.enabled:hover {
+      background: #3b82f6; transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(37,99,235,0.4);
+    }
+
+    /* FOOTER */
+    .page-footer {
+      position: relative; z-index: 2;
+      text-align: center; padding: 1rem;
+      font-size: 0.7rem; color: rgba(255,255,255,0.15);
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+
+    @media (max-width: 600px) {
+      .test-nav { padding: 1rem 1.2rem; }
+      .progress-bar-wrap { padding: 0 1.2rem; }
+      .question-text { font-size: 1.2rem; }
+      .option-btn { font-size: 0.82rem; padding: 0.85rem 1rem; }
+         .nav-progress-text {
+        display: flex;
+        justify-content: right;
+        margin-right: 2rem;
+        margin-top: 1rem;
+        gap: 0.3rem;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 0.7rem; font-weight: 700;
+      color: rgba(255,255,255,0.4);
+    }
+    }
+
+    @media (max-width: 400px) {
+      .question-card {
+        padding: 1.2rem 1rem;
+      }
+      .question-text {
+        font-size: 1rem;
+      }
+      .option-btn {
+        font-size: 0.78rem;
+        padding: 0.75rem 0.9rem;
+      }
+      .btn-proximo, .btn-voltar {
+        font-size: 0.78rem;
+        padding: 0.7rem 1rem;
+      }
+      .nav-btns {
+        gap: 0.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="bg-glow"></div>
+
+  <!-- NAV -->
+  <nav class="test-nav">
+    <a href="inicial_mapa_feito.html" class="nav-logo font-jakarta">Programando o Futuro</a>
+
+    <a href="inicial_mapa_feito.html" class="btn-sair font-manrope">Salvar e Sair</a>
+  </nav>
+
+  <!-- PROGRESS BAR -->
+  <div class="progress-bar-wrap">
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progressBar" style="width: 10%"></div>
+    </div>
+  </div>
+      <span class="nav-progress-text font-jakarta">
+      Pergunta <span id="navCurrent">1</span> de <span id="navTotal">10</span>
+    </span>
+
+  <!-- MAIN -->
+  <main>
+    <div class="question-wrap">
+      <div class="question-card" id="questionCard">
+
+        <div class="question-num font-jakarta" id="questionNum">Pergunta 01</div>
+        <h2 class="question-text font-jakarta" id="questionText"></h2>
+
+        <div class="options-list" id="optionsList"></div>
+
+        <div class="nav-btns">
+          <button class="btn-voltar font-jakarta" id="btnVoltar" onclick="voltarPergunta()">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path d="M19 12H5M12 5l-7 7 7 7"/>
+            </svg>
+            Voltar
+          </button>
+          <button class="btn-proximo font-jakarta" id="btnProximo" onclick="proximaPergunta()">
+            Próxima
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <footer class="page-footer font-jakarta">© 2026 Programando o Futuro</footer>
+  <script src="../js/api.js"></script>
+  <script src="../js/questionario-api.js"></script>
+
+</body>
+</html>
