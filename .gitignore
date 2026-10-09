@@ -1,6 +1,7 @@
 # Variáveis de ambiente
 backend/.env
 .env
+.env.local
 
 # Dados locais (nunca versionar: contém dados de usuários)
 backend/data.json
@@ -8,6 +9,7 @@ backend/data.json
 # Python
 __pycache__/
 *.pyc
+.venv/
 
 # Editor
 .vscode/
