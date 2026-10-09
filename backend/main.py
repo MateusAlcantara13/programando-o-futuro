@@ -7,8 +7,9 @@ from pydantic import BaseModel
 from typing import Optional
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
-import asyncio, httpx, os, logging, jwt, uuid, json, re, random, ssl
+import asyncio, httpx, os, logging, jwt, uuid, json, re, random, ssl, hmac
 import aiomysql
+import bcrypt
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -643,6 +644,22 @@ def serve_page(page: str):
         raise HTTPException(status_code=404, detail="Página não encontrada")
     return FileResponse(path)
 
+# ── Senhas ─────────────────────────────────────────────────────────────────────
+def eh_hash_bcrypt(valor: str) -> bool:
+    return valor.startswith(("$2a$", "$2b$", "$2y$"))
+
+async def gerar_hash_senha(senha: str) -> str:
+    # bcrypt é CPU-bound; roda em thread para não travar o event loop
+    hash_bytes = await asyncio.to_thread(bcrypt.hashpw, senha.encode("utf-8"), bcrypt.gensalt())
+    return hash_bytes.decode("utf-8")
+
+async def verificar_senha(senha: str, armazenada: str) -> bool:
+    if eh_hash_bcrypt(armazenada):
+        return await asyncio.to_thread(bcrypt.checkpw, senha.encode("utf-8"), armazenada.encode("utf-8"))
+    # TEMPORÁRIO (Fase 0): contas antigas com senha em texto plano.
+    # Remover quando nenhuma conta tiver senha sem hash. Ver issue de remoção.
+    return hmac.compare_digest(senha.encode("utf-8"), armazenada.encode("utf-8"))
+
 # ── Auth ───────────────────────────────────────────────────────────────────────
 @app.post("/api/auth/cadastro", status_code=201)
 async def cadastro(body: CadastroBody):
@@ -657,7 +674,7 @@ async def cadastro(body: CadastroBody):
             iniciais = "".join(p[0].upper() for p in body.nome.split()[:2])
             await cur.execute(
                 "INSERT INTO usuarios (id, nome, email, senha, avatar_iniciais, aceite_lgpd, aceite_menor) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                (uid, body.nome, body.email, body.senha, iniciais, body.aceite_lgpd, body.aceite_menor)
+                (uid, body.nome, body.email, await gerar_hash_senha(body.senha), iniciais, body.aceite_lgpd, body.aceite_menor)
             )
             usuario = {
                 "id": uid, "nome": body.nome, "email": body.email,
@@ -672,10 +689,14 @@ async def cadastro(body: CadastroBody):
 async def login(body: LoginBody):
     async with db_pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
-            await cur.execute("SELECT * FROM usuarios WHERE email = %s AND senha = %s", (body.email, body.senha))
+            await cur.execute("SELECT * FROM usuarios WHERE email = %s", (body.email,))
             u = await cur.fetchone()
-            if not u:
+            if not u or not await verificar_senha(body.senha, u["senha"]):
                 raise HTTPException(status_code=401, detail={"erro": "Credenciais inválidas", "codigo": "CREDENCIAIS_INVALIDAS"})
+            # TEMPORÁRIO (Fase 0): converte senha legada em hash no primeiro login bem-sucedido
+            if not eh_hash_bcrypt(u["senha"]):
+                await cur.execute("UPDATE usuarios SET senha = %s WHERE id = %s", (await gerar_hash_senha(body.senha), u["id"]))
+                logger.info("🔐 Senha migrada para bcrypt")
             u["modulos_concluidos"] = json.loads(u["modulos_concluidos"]) if isinstance(u["modulos_concluidos"], str) else (u["modulos_concluidos"] or [])
             u["teste_inicial_concluido"] = bool(u["teste_inicial_concluido"])
             return {"token": gerar_token(u["id"], body.email), "usuario": {k:v for k,v in u.items() if k!="senha"}}
@@ -694,10 +715,10 @@ async def atualizar_perfil(body: dict, usuario: dict = Depends(get_usuario)):
             updates.append(f"{campo}=%s")
             values.append(str(body[campo]).strip())
     if "senha_nova" in body and body["senha_nova"]:
-        if not body.get("senha_atual") or usuario["senha"] != body["senha_atual"]:
+        if not body.get("senha_atual") or not await verificar_senha(str(body["senha_atual"]), usuario["senha"]):
             raise HTTPException(status_code=400, detail={"erro": "Senha atual incorreta"})
         updates.append("senha=%s")
-        values.append(str(body["senha_nova"]).strip())
+        values.append(await gerar_hash_senha(str(body["senha_nova"]).strip()))
     if "nome" in body and body["nome"]:
         partes = str(body["nome"]).strip().split()
         iniciais = "".join(p[0].upper() for p in partes[:2])
@@ -708,7 +729,8 @@ async def atualizar_perfil(body: dict, usuario: dict = Depends(get_usuario)):
         async with db_pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(f"UPDATE usuarios SET {', '.join(updates)} WHERE id=%s", values)
-    return await get_usuario({"sub": usuario["id"]})
+    atualizado = await get_usuario({"sub": usuario["id"]})
+    return {k:v for k,v in atualizado.items() if k!="senha"}
 
 # ── Teste Inicial ──────────────────────────────────────────────────────────────
 @app.get("/api/testeinicial/perguntas")
