@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import asyncio, httpx, os, logging, jwt, uuid, json, re, random, ssl, hmac, time
 import aiomysql
 import bcrypt
+from migracoes.jobs_heartbeat import migrar_jobs_heartbeat, verificar_jobs_heartbeat
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -53,8 +54,8 @@ def _obter_ia_semaphore() -> asyncio.Semaphore:
     return ia_semaphore
 
 # ── BANCO DE DADOS ───────────────────────────────────────────────────────────
-async def init_db():
-    global db_pool
+async def criar_pool():
+    """Cria o pool de conexões. Usado pelo startup e pelo script manual de migração."""
     ssl_ctx = None
     if DB_SSL_DISABLED:
         logger.warning("⚠️ TLS do banco DESLIGADO (DB_SSL_DISABLED=true). Use isso só em ambiente local.")
@@ -63,7 +64,7 @@ async def init_db():
         # certificado precisa bater com o hostname de DB_HOST, não só com a CA.
         ssl_ctx = ssl.create_default_context(cafile=DB_SSL_CA)
         ssl_ctx.verify_mode = ssl.CERT_REQUIRED
-    db_pool = await aiomysql.create_pool(
+    return await aiomysql.create_pool(
         host=os.getenv("DB_HOST", ""),
         port=int(os.getenv("DB_PORT", "3306")),
         user=os.getenv("DB_USER", ""),
@@ -74,7 +75,16 @@ async def init_db():
         minsize=1,
         maxsize=10,
     )
+
+async def init_db():
+    global db_pool
+    db_pool = await criar_pool()
     await criar_tabelas()
+    # Migração antes de servir. Qualquer falha aqui sobe a exceção e o
+    # startup é abortado: a aplicação não atende com esquema errado.
+    async with db_pool.acquire() as conn:
+        await migrar_jobs_heartbeat(conn)
+        await verificar_jobs_heartbeat(conn)
     logger.info("✅ Banco de dados conectado!")
 
 async def criar_tabelas():
@@ -135,8 +145,12 @@ async def criar_tabelas():
             status ENUM('processando','concluido','erro') DEFAULT 'processando',
             erro TEXT,
             criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+            tentativas INT NOT NULL DEFAULT 0,
+            atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
         )"""
+        # Bancos que já existiam recebem essas duas colunas pela migração em
+        # migracoes/jobs_heartbeat.py, chamada logo depois em init_db().
     ]
     async with db_pool.acquire() as conn:
         async with conn.cursor() as cur:
