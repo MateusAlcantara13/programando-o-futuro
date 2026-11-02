@@ -15,3 +15,6 @@ __pycache__/
 .vscode/
 .idea/
 .DS_Store
+
+# Script descartável de verificação manual do semáforo da IA
+verifica_semaforo.py

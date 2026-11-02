@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from typing import Optional
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
-import asyncio, httpx, os, logging, jwt, uuid, json, re, random, ssl, hmac
+import asyncio, httpx, os, logging, jwt, uuid, json, re, random, ssl, hmac, time
 import aiomysql
 import bcrypt
 
@@ -20,6 +20,7 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL   = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
 JWT_SECRET        = os.getenv("JWT_SECRET", "dev-secret-troque-em-producao-2026")
 JWT_EXPIRES_H     = int(os.getenv("JWT_EXPIRES_H", "24"))
+IA_MAX_CONCORRENTES = int(os.getenv("IA_MAX_CONCORRENTES", "5"))
 
 if ANTHROPIC_API_KEY:
     logger.info(f"✅ Chave: {ANTHROPIC_API_KEY[:12]}...{ANTHROPIC_API_KEY[-4:]}")
@@ -31,10 +32,20 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 @app.on_event("startup")
 async def startup():
     await init_db()
+    _obter_ia_semaphore()
+    logger.info(f"🚦 Limite de chamadas simultâneas à IA: {IA_MAX_CONCORRENTES}")
 security = HTTPBearer()
 
 
 db_pool = None
+ia_semaphore: Optional[asyncio.Semaphore] = None
+
+def _obter_ia_semaphore() -> asyncio.Semaphore:
+    """Cria o semáforo sob demanda, caso chamar_ia seja usada sem o startup do app ter rodado (ex.: testes)."""
+    global ia_semaphore
+    if ia_semaphore is None:
+        ia_semaphore = asyncio.Semaphore(IA_MAX_CONCORRENTES)
+    return ia_semaphore
 
 # ── BANCO DE DADOS ───────────────────────────────────────────────────────────
 async def init_db():
@@ -429,10 +440,26 @@ Retorne SOMENTE um JSON válido (sem markdown, sem texto adicional) neste format
   }}
 }}"""
 
-async def chamar_ia(prompt: str) -> dict:
+async def chamar_ia(prompt: str, job_id: Optional[str] = None) -> dict:
     if not ANTHROPIC_API_KEY:
         raise RuntimeError("Chave de API não configurada no servidor. Contate o administrador.")
 
+    jid = job_id or uuid.uuid4().hex[:8]
+    sem = _obter_ia_semaphore()
+    t_inicio_espera = time.monotonic()
+    async with sem:
+        espera = time.monotonic() - t_inicio_espera
+        logger.info(f"IA job={jid} evento=fila_entrada espera={espera:.1f}s")
+        t_inicio_chamada = time.monotonic()
+        try:
+            return await _chamar_ia_com_retry(prompt)
+        finally:
+            chamada = time.monotonic() - t_inicio_chamada
+            total = espera + chamada
+            logger.info(f"IA job={jid} evento=concluido fila={espera:.1f}s chamada={chamada:.1f}s total={total:.1f}s")
+
+
+async def _chamar_ia_com_retry(prompt: str) -> dict:
     MAX_TENTATIVAS = 3
     ESPERA_ENTRE_TENTATIVAS = [5, 15]  # segundos entre tentativas
 
@@ -876,7 +903,7 @@ async def processar_resultado_ia_db(job_id: str, uid: str, usuario: dict, origem
             linhas_mod += f"\nMódulo {mid} — {info['titulo']}:\n{fmt_respostas(rm.get(mid, {}))}"
 
         prompt = montar_prompt_base(usuario["nome"], linhas_teste, linhas_mod)
-        resultado = await chamar_ia(prompt)
+        resultado = await chamar_ia(prompt, job_id)
 
         async with db_pool.acquire() as conn:
             async with conn.cursor() as cur:
