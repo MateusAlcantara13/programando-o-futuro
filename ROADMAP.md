@@ -46,6 +46,10 @@ Todas as páginas, JavaScript e estilos, painel administrativo no front, script 
 
 Fora dessas áreas existem dois territórios compartilhados que exigem regra explícita, tratados na seção 4.
 
+**Semana de 01/11/2026.** Yago e Ricardo estão fora e o Mateus está tocando todas as áreas, inclusive esquema e migrações. Enquanto isso durar, as áreas servem como ordem de execução. Ver a situação da Fase 1.
+
+Durante esta semana, os pull requests são aprovados pelo próprio autor. Quando o Yago e o Ricardo voltarem, eles revisam os PRs #4 a #6 e os demais mergeados nesta semana, e podem abrir correção sobre qualquer um deles. A regra de revisão por outra pessoa da seção 4 continua valendo, e a revisão desses PRs só acontece mais tarde.
+
 ## 4. Regras para não atrapalhar uns aos outros
 
 **O `main.py` é o principal risco de colisão.** São 1154 linhas com tudo dentro. Enquanto ele não for quebrado em módulos, vale a regra: no máximo um pull request aberto por vez tocando nesse arquivo. Quem for começar avisa no grupo antes de criar o branch.
@@ -81,13 +85,15 @@ Os três trabalham juntos nesta semana. É a única fase sem paralelismo, porque
 | Restringir CORS ao domínio publicado | Mateus | Requisição de origem desconhecida é bloqueada |
 | Restringir `/pages/{page}` a lista fixa de páginas | Yago | Nome fora da lista retorna 404 |
 | Verificar dono do job em `/api/resultado/status` | Mateus | Job de outro usuário retorna 403 |
-| Configuração de TLS do banco: verificação de hostname, CA configurável e modo local | Ricardo | Hostname do servidor é verificado, a CA vem de variável de ambiente, e a aplicação roda contra MySQL local sem alterar código |
+| Configuração de TLS do banco: verificação de hostname, CA configurável e modo local | Ricardo | Hostname do servidor é verificado, a CA vem de variável de ambiente, e a aplicação roda contra MySQL local sem alterar código. **Concluído em 01/11/2026 (PR #5).** A verificação de hostname ainda não foi testada, ver reconexão do deploy |
 | Remover a senha guardada no `localStorage` dos navegadores | Yago | Nenhuma página do site deixa o campo `senha` dentro de `pf_user` depois de carregar |
 | Front chama a API pela origem da própria página, sem endereço fixo | Yago | Nenhum endereço de servidor escrito no front, e o mesmo código funciona no backend local e em produção |
-| Documentar o ambiente local no repositório | Mateus | Ricardo sobe o sistema na própria máquina seguindo só o documento, sem perguntar nada a ninguém |
+| Documentar o ambiente local no repositório | Mateus | Ricardo sobe o sistema na própria máquina seguindo só o documento, sem perguntar nada a ninguém. **Ambiente criado em 01/11/2026 (PR #5). Falta a verificação pelo Ricardo** |
 | Reconectar o deploy no Render | Mateus | Merge na `main` volta a publicar, com o banco de produção definido e todas as tarefas acima fechadas |
 
 A senha `25107Senai` está no código-fonte público hoje. Ela precisa ser trocada, não apenas movida para variável de ambiente.
+
+O mesmo vale para o `JWT_SECRET`. O valor padrão escrito no código está público no repositório, então produção precisa de um valor aleatório novo, e a aplicação tem de recusar subir em produção sem a variável definida.
 
 **Configuração de TLS do banco.** O `init_db` monta o contexto SSL com três problemas. Primeiro, `check_hostname=False` aceita qualquer certificado assinado pela CA, sem conferir o nome do servidor. Segundo, o caminho da CA está fixo no código, apontando para o `ca.pem` do Aiven, e o provedor do banco vai mudar. Terceiro, hoje não é possível rodar o backend contra um MySQL local sem alterar código. O aiomysql 0.2.0 avisa ao servidor que vai usar TLS sempre que recebe um contexto SSL (`aiomysql/connection.py:244-245`), e um servidor sem TLS recusa a conexão com `(1043, 'Bad handshake')`. Isso foi verificado em 08/10/2026 contra MySQL 8.0.46. Por isso o modo local passa a ser um requisito.
 
@@ -96,6 +102,8 @@ O que muda: uma variável `DB_SSL_MODE`, obrigatória, com dois valores. Em `ver
 Hipótese não verificada: um atacante ativo no caminho entre o Render e o banco poderia retirar dos pacotes iniciais, que trafegam sem criptografia, o anúncio de TLS do servidor e o aviso de TLS do cliente, fazendo a conexão seguir em texto claro. A consulta a `Ssl_cipher` na inicialização serve de defesa barata contra essa possibilidade, mas não cobre as conexões abertas depois pelo pool.
 
 Como verificar: (1) MySQL local sem TLS em modo `desligado`, a aplicação sobe e o aviso aparece no log; (2) o mesmo banco em modo `verificar`, a aplicação não sobe e explica o motivo; (3) banco com TLS e CA correta em modo `verificar`, a aplicação sobe; (4) CA errada, a aplicação não sobe; (5) certificado assinado pela CA certa, mas com outro nome de servidor, a aplicação não sobe.
+
+**Como ficou no PR #5 (01/11/2026).** A implementação seguiu um caminho mais simples que o descrito acima. No lugar de `DB_SSL_MODE`, a variável `DB_SSL_DISABLED=true` desliga o TLS, e sem ela o TLS é exigido. A CA vem de `DB_SSL_CA`. O hostname é conferido, porque o `check_hostname` fica no padrão do `ssl.create_default_context`. A consulta a `Ssl_cipher` na inicialização não foi implementada. Os testes (3) a (5) dependem de um banco com TLS e ficam para a reconexão do deploy.
 
 **Senha guardada no navegador.** Até a correção do `PATCH /api/auth/perfil`, essa rota devolvia a linha inteira de `usuarios`, com a coluna `senha`. Antes do PR de hash, isso era a senha em texto plano. Cinco páginas gravam essa resposta com `auth.setUser`: `oportunidades.html:436`, `mapa_carreira.html:572`, `inicial_logada.html:782`, `inicial_mapa_feito.html:1103` e `resultado.html:734`. Todo aluno que editou o perfil ficou com a senha legível no `localStorage` (chave `pf_user`) do navegador. Em computador de laboratório, qualquer pessoa que abrir as ferramentas do desenvolvedor consegue ler esse valor. O servidor não tem como apagar dado guardado no navegador.
 
@@ -119,7 +127,16 @@ Dependências: esta tarefa vem depois de duas outras. Primeiro, a configuração
 
 Como verificar: Ricardo segue o documento numa máquina onde o ambiente nunca foi montado, até conseguir fazer cadastro e login. Se ele precisar perguntar qualquer coisa ao Mateus, o documento não está pronto: a resposta entra no documento e a verificação recomeça do zero.
 
+**Como ficou no PR #5 (01/11/2026).** O `CLAUDE.md` já dizia que a validação de cada PR acontecia no ambiente local com Docker, mas até esse PR o repositório não tinha esse ambiente. Agora tem. O banco sobe pelo `docker-compose.yml` na raiz (MySQL 8.0 na porta 3306, com a aplicação conectando sem TLS por `DB_SSL_DISABLED=true`), e a documentação ficou na seção "Como rodar localmente" do README em vez de `docs/ambiente-local.md`. Falta a verificação pelo Ricardo descrita acima.
+
 **Reconexão do deploy.** Última tarefa da fase, só depois de todas as outras fechadas e do banco de produção resolvido. Antes de reconectar: confirmar no painel do Render que o serviço aponta para `MateusAlcantara13/programando-o-futuro`; cadastrar as variáveis de ambiente de produção, já sem nenhum valor padrão no código; usar `DB_SSL_MODE=verificar` com a CA do provedor novo; e confirmar que a `ADMIN_SECRET` foi trocada. Depois de reconectar, o `CLAUDE.md` volta a dizer que merge na `main` publica em produção.
+
+Quatro pendências descobertas em 01/11/2026, também antes de reconectar:
+
+1. Gerar um `JWT_SECRET` aleatório e fazer a aplicação recusar subir em produção sem a variável definida. Faz parte da tarefa de remover os valores padrão de segredo, ver acima.
+2. Conferir o `DB_SSL_CA`. O valor padrão é um caminho relativo à raiz do repositório (`backend/ca.pem`), mas o backend roda de dentro de `backend/`, então esse caminho não encontra o arquivo.
+3. Confirmar a verificação de hostname do certificado contra o banco novo, com os testes (3) a (5) da configuração de TLS. Ela foi ativada no PR #5, mas não pôde ser testada, porque o banco local roda sem TLS.
+4. Implementar a consulta a `Ssl_cipher` na inicialização, que estava no plano da tarefa de TLS e ficou de fora do PR #5. Sem ela, a aplicação não tem como confirmar que o TLS está ativo em produção, só supor. A limitação descrita na hipótese acima continua: a consulta cobre a conexão da inicialização, e não as abertas depois pelo pool.
 
 ### Fase 1 — Confiabilidade (semanas 2 a 4, 07/09 a 27/09)
 
@@ -127,16 +144,27 @@ Aqui começa o trabalho paralelo. Cada um na sua área.
 
 **Mateus, fila e concorrência**
 Semáforo limitando chamadas simultâneas à API, com o limite como variável de ambiente para permitir ajuste sem novo deploy. Colunas `tentativas` e `atualizado_em` na tabela `jobs`. Rotina de inicialização que identifica job travado em `processando` e reenfileira. Reprocessamento automático substituindo o botão manual do admin. Cliente HTTP único no ciclo de vida da aplicação em vez de um por chamada. Tratamento de resposta truncada por limite de tokens, que hoje cai no retry sem diagnóstico.
+Concluído em 01/11/2026: semáforo (PR #4) e colunas `tentativas` e `atualizado_em`, com heartbeat gravado a cada tentativa de chamada à IA (PR #6).
 
 **Ricardo, correção de dados**
 Correção do tipo de `mapa_progresso.usuario_id`, hoje `INT` recebendo UUID, com verificação de quantos registros foram perdidos. Chave estrangeira e índice na tabela. Índice em `jobs` por usuário e data. Migração da coluna `modulos_concluidos` se aparecer inconsistência.
 
 **Yago, medição**
 Reescrita do `teste_carga.py` para rodar com número de usuários parametrizável e produzir relatório com taxa de sucesso, latência média e distribuição de erros. Execução com 15, 31 e 50 usuários, com os números registrados. Montagem do conjunto de doze perfis fixos de teste e da rubrica de qualidade descrita na seção 8. Geração da linha de base de qualidade usando o sistema como está hoje.
+A versão completa do `teste_carga.py` usada na validação de maio nunca foi commitada e se perdeu. No repositório existe só um script simples de 67 linhas, que aponta para o Render e não gera relatório. Ele serve de ponto de partida, mas a tarefa passa a ser escrever o teste do zero.
 
 A linha de base precisa sair antes de qualquer mudança no prompt. Sem ela, não há comparação possível em dezembro.
 
 **Marco da semana 4:** cinquenta usuários simultâneos com falha abaixo de cinco por cento, e doze planos de linha de base arquivados.
+
+**Situação em 01/11/2026.** A Fase 1 foi dimensionada para três pessoas, com prazo até 07/11. Nesta semana o Yago e o Ricardo estão fora e o Mateus está tocando todas as áreas sozinho, e com uma pessoa esse prazo não se sustenta. Ordem solo do Mateus:
+
+1. Teste de carga, escrito do zero.
+2. Rodar as três cargas, com 15, 31 e 50 usuários, e registrar os números.
+3. Recuperação de job travado.
+4. Tratamento de resposta truncada.
+
+A adaptação das telas de resultado da Fase 3 fica reservada para o Yago e o Ricardo.
 
 ### Fase 2 — Estrutura (semanas 5 a 8, 28/09 a 25/10)
 
@@ -147,6 +175,8 @@ Depois do congelamento, nas semanas 6 a 8:
 **Ricardo** escreve testes de autenticação e banco com pytest, cobrindo cadastro, login, token expirado e salvamento de resposta.
 **Mateus** escreve testes do ciclo de vida do job, com a chamada à API simulada, cobrindo sucesso, erro, retry e recuperação de job travado.
 **Yago** configura GitHub Actions rodando os testes a cada pull request, e revisa o front em celular de baixo custo, medindo tempo até a primeira tela útil.
+
+**Pendência menor.** No `main.py`, a mensagem de erro de formato inválido montada em `processar_resultado_ia_db`, que aparece no painel admin, tem o texto `teste_carga.py` no começo, resto de uma edição mal feita.
 
 **Marco da semana 8:** nenhum arquivo de backend acima de trezentas linhas, testes rodando automaticamente em cada pull request, `main` com histórico limpo.
 
@@ -218,6 +248,10 @@ Toda decisão de arquitetura entra nesta tabela, com data, quem decidiu e por qu
 | 27/08/2026 | Árvore de agentes fora do escopo do semestre | Multiplica chamadas por aluno e piora o gargalo de concorrência que é o problema central | Equipe |
 | 27/08/2026 | Verificação de instituições feita por código, não por IA | Reprodutível, sem custo de token, mais confiável | Equipe |
 | 27/08/2026 | Separação em duas chamadas em vez de uma | Roadmap disputa orçamento de tokens com nove outras seções | Equipe |
+| 01/11/2026 | Recuperação de job travado usa o heartbeat em `atualizado_em`, combinado com `tentativas > 0`, e não o tempo desde a criação | Job esperando vaga no semáforo fica com `tentativas = 0` e `atualizado_em` igual a `criado_em`, e não pode ser confundido com job parado | Mateus |
+| 01/11/2026 | Limite de 10 minutos sem heartbeat para considerar job travado | O intervalo máximo entre heartbeats de um job trabalhando é de cerca de 145 segundos: timeout de 120 s da chamada mais a maior espera entre tentativas. Se esses tempos mudarem, o limite precisa ser revisto | Mateus |
+| 01/11/2026 | Reenfileiramento por UPDATE condicional: só pega o job se o status ainda for `processando` e o heartbeat ainda estiver velho, e só dispara a tarefa se o UPDATE afetou uma linha | Sem isso, a mesma geração pode ser paga duas vezes | Mateus |
+| 01/11/2026 | Migração de esquema roda sozinha no startup, de forma idempotente, com verificação logo depois que recusa servir se o esquema estiver errado | Depender de script manual derrubaria a aplicação a cada push com esquema novo até alguém lembrar de rodar. O script continua disponível para rodar à mão | Mateus |
 
 ## 10. Ideias fora de escopo
 
