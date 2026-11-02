@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import asyncio, httpx, os, logging, jwt, uuid, json, re, random, ssl, hmac, time
 import aiomysql
 import bcrypt
+from migracoes.jobs_heartbeat import migrar_jobs_heartbeat, verificar_jobs_heartbeat
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -53,8 +54,8 @@ def _obter_ia_semaphore() -> asyncio.Semaphore:
     return ia_semaphore
 
 # ── BANCO DE DADOS ───────────────────────────────────────────────────────────
-async def init_db():
-    global db_pool
+async def criar_pool():
+    """Cria o pool de conexões. Usado pelo startup e pelo script manual de migração."""
     ssl_ctx = None
     if DB_SSL_DISABLED:
         logger.warning("⚠️ TLS do banco DESLIGADO (DB_SSL_DISABLED=true). Use isso só em ambiente local.")
@@ -63,7 +64,7 @@ async def init_db():
         # certificado precisa bater com o hostname de DB_HOST, não só com a CA.
         ssl_ctx = ssl.create_default_context(cafile=DB_SSL_CA)
         ssl_ctx.verify_mode = ssl.CERT_REQUIRED
-    db_pool = await aiomysql.create_pool(
+    return await aiomysql.create_pool(
         host=os.getenv("DB_HOST", ""),
         port=int(os.getenv("DB_PORT", "3306")),
         user=os.getenv("DB_USER", ""),
@@ -74,7 +75,16 @@ async def init_db():
         minsize=1,
         maxsize=10,
     )
+
+async def init_db():
+    global db_pool
+    db_pool = await criar_pool()
     await criar_tabelas()
+    # Migração antes de servir. Qualquer falha aqui sobe a exceção e o
+    # startup é abortado: a aplicação não atende com esquema errado.
+    async with db_pool.acquire() as conn:
+        await migrar_jobs_heartbeat(conn)
+        await verificar_jobs_heartbeat(conn)
     logger.info("✅ Banco de dados conectado!")
 
 async def criar_tabelas():
@@ -135,8 +145,12 @@ async def criar_tabelas():
             status ENUM('processando','concluido','erro') DEFAULT 'processando',
             erro TEXT,
             criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+            tentativas INT NOT NULL DEFAULT 0,
+            atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
         )"""
+        # Bancos que já existiam recebem essas duas colunas pela migração em
+        # migracoes/jobs_heartbeat.py, chamada logo depois em init_db().
     ]
     async with db_pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -460,18 +474,59 @@ async def chamar_ia(prompt: str, job_id: Optional[str] = None) -> dict:
         logger.info(f"IA job={jid} evento=fila_entrada espera={espera:.1f}s")
         t_inicio_chamada = time.monotonic()
         try:
-            return await _chamar_ia_com_retry(prompt)
+            return await _chamar_ia_com_retry(prompt, job_id)
         finally:
             chamada = time.monotonic() - t_inicio_chamada
             total = espera + chamada
             logger.info(f"IA job={jid} evento=concluido fila={espera:.1f}s chamada={chamada:.1f}s total={total:.1f}s")
 
 
-async def _chamar_ia_com_retry(prompt: str) -> dict:
+HEARTBEAT_TIMEOUT_S = 5.0
+
+async def _registrar_heartbeat(job_id: str) -> None:
+    """Marca o início de uma tentativa de chamada à IA para o job.
+
+    Significado das colunas para a recuperação de job travado:
+    - tentativas = 0: o job nunca começou uma tentativa. Está esperando vaga
+      no semáforo ou ficou órfão porque o processo caiu antes da vez dele.
+      Enquanto o processo está vivo, isso NÃO indica job travado, mesmo com
+      atualizado_em antigo (ele continua igual a criado_em até a 1ª tentativa).
+    - tentativas > 0 e atualizado_em antigo: começou uma tentativa e parou de
+      dar sinal. Entre dois heartbeats saudáveis cabem até ~145 s (timeout de
+      120 s do httpx mais a maior espera entre tentativas, 15 + 10 s), então o
+      limite de "travado" precisa ser maior que isso.
+
+    Falha aqui não interrompe a chamada: perder uma geração paga por uma
+    oscilação do banco é pior do que perder um heartbeat. O custo é que a
+    recuperação pode reenfileirar um job saudável, o que é raro e será
+    protegido por UPDATE condicional na rotina de recuperação.
+    """
+    async def _gravar():
+        async with db_pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "UPDATE jobs SET tentativas = tentativas + 1, atualizado_em = NOW() WHERE id = %s",
+                    (job_id,),
+                )
+                return cur.rowcount
+
+    try:
+        linhas = await asyncio.wait_for(_gravar(), timeout=HEARTBEAT_TIMEOUT_S)
+        if linhas == 0:
+            logger.warning(f"Heartbeat job={job_id}: nenhum job com esse id na tabela jobs")
+    except Exception as e:
+        logger.warning(f"Heartbeat job={job_id} não gravado, seguindo com a chamada: {type(e).__name__}: {e}")
+
+
+async def _chamar_ia_com_retry(prompt: str, job_id: Optional[str] = None) -> dict:
     MAX_TENTATIVAS = 3
     ESPERA_ENTRE_TENTATIVAS = [5, 15]  # segundos entre tentativas
 
     for tentativa in range(1, MAX_TENTATIVAS + 1):
+        # Já dentro do semáforo: este é o início real da tentativa.
+        # Sem job_id (chamada fora de job), nada é gravado.
+        if job_id:
+            await _registrar_heartbeat(job_id)
         try:
             logger.info(f"🤖 Chamando IA — tentativa {tentativa}/{MAX_TENTATIVAS}")
             async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=15.0)) as client:
