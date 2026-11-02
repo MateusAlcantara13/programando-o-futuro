@@ -11,6 +11,7 @@ import asyncio, httpx, os, logging, jwt, uuid, json, re, random, ssl, hmac, time
 import aiomysql
 import bcrypt
 from migracoes.jobs_heartbeat import migrar_jobs_heartbeat, verificar_jobs_heartbeat
+import ia_simulada
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -27,6 +28,9 @@ IA_MAX_CONCORRENTES = int(os.getenv("IA_MAX_CONCORRENTES", "5"))
 # conexão em vez de conectar sem TLS silenciosamente.
 DB_SSL_DISABLED   = os.getenv("DB_SSL_DISABLED", "false").lower() == "true"
 DB_SSL_CA         = os.getenv("DB_SSL_CA", "backend/ca.pem")
+# IA simulada: desligada por padrão, só liga com IA_SIMULADA=true explícito.
+# Valor inválido nas variáveis IA_SIMULADA_* impede a aplicação de iniciar.
+ia_simulada.configurar()
 
 if ANTHROPIC_API_KEY:
     logger.info(f"✅ Chave: {ANTHROPIC_API_KEY[:12]}...{ANTHROPIC_API_KEY[-4:]}")
@@ -37,6 +41,8 @@ app = FastAPI(title="Programando o Futuro API", version="2.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 @app.on_event("startup")
 async def startup():
+    if ia_simulada.config.ativa:
+        logger.warning(ia_simulada.aviso_startup())
     await init_db()
     _obter_ia_semaphore()
     logger.info(f"🚦 Limite de chamadas simultâneas à IA: {IA_MAX_CONCORRENTES}")
@@ -463,7 +469,7 @@ Retorne SOMENTE um JSON válido (sem markdown, sem texto adicional) neste format
 }}"""
 
 async def chamar_ia(prompt: str, job_id: Optional[str] = None) -> dict:
-    if not ANTHROPIC_API_KEY:
+    if not ANTHROPIC_API_KEY and not ia_simulada.config.ativa:
         raise RuntimeError("Chave de API não configurada no servidor. Contate o administrador.")
 
     jid = job_id or uuid.uuid4().hex[:8]
@@ -478,7 +484,8 @@ async def chamar_ia(prompt: str, job_id: Optional[str] = None) -> dict:
         finally:
             chamada = time.monotonic() - t_inicio_chamada
             total = espera + chamada
-            logger.info(f"IA job={jid} evento=concluido fila={espera:.1f}s chamada={chamada:.1f}s total={total:.1f}s")
+            simulada = "sim" if ia_simulada.config.ativa else "nao"
+            logger.info(f"IA job={jid} evento=concluido fila={espera:.1f}s chamada={chamada:.1f}s total={total:.1f}s simulada={simulada}")
 
 
 HEARTBEAT_TIMEOUT_S = 5.0
@@ -518,6 +525,24 @@ async def _registrar_heartbeat(job_id: str) -> None:
         logger.warning(f"Heartbeat job={job_id} não gravado, seguindo com a chamada: {type(e).__name__}: {e}")
 
 
+async def _enviar_para_ia(prompt: str, max_tokens: int, timeout: float, tipo: str):
+    """Único ponto que faz o POST para a API do Claude.
+
+    Com IA_SIMULADA ligada, devolve uma resposta pronta com a mesma interface
+    (status_code, json(), text) ou levanta as mesmas exceções do httpx. O que
+    vem antes (semáforo, heartbeat) e depois (status, parse, retry) não muda.
+    tipo: 'plano' para chamar_ia, 'lista' para chamar_ia_lista.
+    """
+    if ia_simulada.config.ativa:
+        return await ia_simulada.enviar(tipo)
+    async with httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=15.0)) as client:
+        return await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json"},
+            json={"model": ANTHROPIC_MODEL, "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}]},
+        )
+
+
 async def _chamar_ia_com_retry(prompt: str, job_id: Optional[str] = None) -> dict:
     MAX_TENTATIVAS = 3
     ESPERA_ENTRE_TENTATIVAS = [5, 15]  # segundos entre tentativas
@@ -529,12 +554,7 @@ async def _chamar_ia_com_retry(prompt: str, job_id: Optional[str] = None) -> dic
             await _registrar_heartbeat(job_id)
         try:
             logger.info(f"🤖 Chamando IA — tentativa {tentativa}/{MAX_TENTATIVAS}")
-            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=15.0)) as client:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json"},
-                    json={"model": ANTHROPIC_MODEL, "max_tokens": 8192, "messages": [{"role": "user", "content": prompt}]},
-                )
+            resp = await _enviar_para_ia(prompt, max_tokens=8192, timeout=120.0, tipo="plano")
         except httpx.TimeoutException:
             msg = f"A IA demorou demais para responder (tentativa {tentativa}/{MAX_TENTATIVAS}). Muitos usuários simultâneos."
             logger.warning(f"⏱️ Timeout na tentativa {tentativa}: {msg}")
@@ -1200,14 +1220,10 @@ async def jornada_prog(usuario: dict = Depends(get_usuario)):
 
 
 async def chamar_ia_lista(prompt: str) -> list:
-    if not ANTHROPIC_API_KEY:
+    if not ANTHROPIC_API_KEY and not ia_simulada.config.ativa:
         raise RuntimeError("Chave de API não configurada no servidor.")
-    async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=15.0)) as client:
-        resp = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json"},
-            json={"model": ANTHROPIC_MODEL, "max_tokens": 2000, "messages": [{"role": "user", "content": prompt}]},
-        )
+    # Esta rota não passa pelo semáforo (pendência registrada no ROADMAP).
+    resp = await _enviar_para_ia(prompt, max_tokens=2000, timeout=60.0, tipo="lista")
     if resp.status_code != 200:
         raise RuntimeError(f"Erro da IA: {resp.status_code}")
     texto = "".join(b.get("text", "") for b in resp.json().get("content", [])).strip()

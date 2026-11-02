@@ -1,0 +1,320 @@
+{
+  "cursos": [
+    {
+      "url": "https://cs50.harvard.edu/x/",
+      "nome": "CS50 - Introdução à Ciência da Computação",
+      "nivel": "iniciante",
+      "gratuito": true,
+      "plataforma": "Harvard via edX (legendado PT)"
+    },
+    {
+      "url": "https://learn.unity.com/",
+      "nome": "Desenvolvimento de Jogos com Unity",
+      "nivel": "iniciante",
+      "gratuito": true,
+      "plataforma": "Unity Learn"
+    },
+    {
+      "url": "https://www.edx.org/course/introduction-to-linux",
+      "nome": "Linux para Desenvolvedores",
+      "nivel": "intermediario",
+      "gratuito": true,
+      "plataforma": "Fundação Linux (edX)"
+    },
+    {
+      "url": "https://www.cursoemvideo.com/",
+      "nome": "Estruturas de Dados e Algoritmos em Python",
+      "nivel": "intermediario",
+      "gratuito": true,
+      "plataforma": "Curso em Vídeo (Gustavo Guanabara)"
+    },
+    {
+      "url": "https://www.dio.me/",
+      "nome": "Git e GitHub para Iniciantes",
+      "nivel": "iniciante",
+      "gratuito": true,
+      "plataforma": "Digital Innovation One (DIO)"
+    },
+    {
+      "url": "https://www.oracle.com/br/education/oracle-next-education/",
+      "nome": "Oracle Next Education (ONE)",
+      "nivel": "iniciante",
+      "gratuito": true,
+      "plataforma": "Oracle + Alura"
+    }
+  ],
+  "skills": [
+    "Programação autodidata (desenvolvimento de jogos)",
+    "Conhecimento em Linux e sistemas operacionais",
+    "Raciocínio lógico-matemático (680 no ENEM)",
+    "Experiência administrativa (jovem aprendiz)",
+    "Escrita clara (redação 720)",
+    "Autonomia e aprendizado independente"
+  ],
+  "alertas": [
+    "Sua nota de matemática (680) está BOA, mas universidades top como USP-Capital pedem 750+. UNIFESP e UFABC são metas realistas JÁ. Para USP, considere refazer ENEM focando em elevar matemática.",
+    "Guarulhos tem ótima infraestrutura de ensino técnico público (ETEC, IFSP, SENAI). Aproveite isso enquanto decide sobre graduação — técnico te coloca no mercado rápido.",
+    "Mercado de TI está aquecido, mas competitivo para júnior. Portfólio + networking + certificações gratuitas (Oracle, Google, Microsoft Learn) fazem MUITA diferença. Não dependa só do diploma.",
+    "Se precisar de renda urgente, priorize: Técnico noturno (1,5 ano) → Estágio/Júnior (R$ 2-3k) → Graduação EAD pública depois. Não há vergonha em trabalhar enquanto estuda, é inteligente.",
+    "Seu conhecimento autodidata em Linux é VALIOSO. Empresas de infra, DevOps e segurança pagam bem. Explore certificações Linux (LPI, CompTIA) — algumas gratuitas para estudar, pagamento só na prova."
+  ],
+  "caminhos": [
+    {
+      "custo": "Gratuito",
+      "prazo": "4 anos",
+      "passos": [
+        {
+          "titulo": "Inscrição no SISU 2025 (junho/julho)",
+          "descricao": "Use suas notas do ENEM 2024. Com 680 em matemática, você compete por vagas em USP-Leste, UNIFESP Zona Norte, UFABC (todas acessíveis de Guarulhos). Simule no site do SISU antes."
+        },
+        {
+          "titulo": "Plano B: ENEM 2025 para melhorar nota",
+          "descricao": "Se não passar agora, foque em elevar matemática para 720+. Estude por plataformas gratuitas (Descomplica Free, Me Salva, Brasil Escola). Inscrições em maio, prova em novembro."
+        },
+        {
+          "titulo": "Participe de grupos de estudo e maratonas de programação",
+          "descricao": "Na USP, UNIFESP e UFABC existem grupos de extensão abertos (Ganesh UFABC, grupos de competição). Entre mesmo antes de ser aluno para fazer networking."
+        }
+      ],
+      "titulo": "Ciência da Computação em Universidade Pública (SISU)",
+      "descricao": "Melhor caminho para formação completa, reconhecimento no mercado e base teórica sólida. Gratuito e com possibilidade de bolsas de pesquisa, estágios bem remunerados desde o 2º ano.",
+      "dificuldade": "Média-Alta"
+    },
+    {
+      "custo": "Gratuito",
+      "prazo": "1,5 a 2 anos",
+      "passos": [
+        {
+          "titulo": "Inscrição em curso técnico gratuito",
+          "descricao": "ETEC Guarulhos (Centro Paula Souza) oferece Desenvolvimento de Sistemas noturno. Inscrições geralmente em maio e novembro. Também há vagas no SENAI Guarulhos (algumas gratuitas via renda)."
+        },
+        {
+          "titulo": "Buscar estágio ou Junior Dev durante o curso",
+          "descricao": "Com 6 meses de técnico + seu portfólio de jogos, você já compete por vagas júnior (R$ 2.000-3.500). Use LinkedIn, Gupy, Trampos.co. Destaque Linux e jogos no currículo."
+        },
+        {
+          "titulo": "Após formado, avaliar graduação EAD",
+          "descricao": "Com renda estabilizada, pode fazer Ciência da Computação EAD em federal (UFABC, UNIFESP têm modalidades) ou privada com ProUni/bolsa empresa."
+        }
+      ],
+      "titulo": "Curso Técnico em Desenvolvimento de Sistemas + Trabalho",
+      "descricao": "Caminho rápido (1,5 ano) para entrar no mercado enquanto estuda. Gratuito, noturno, com certificação reconhecida. Ideal se precisar de renda imediata.",
+      "dificuldade": "Média"
+    },
+    {
+      "custo": "R$ 0 a 2.000 (muitos gratuitos ou com bolsa)",
+      "prazo": "6 meses a 1 ano",
+      "passos": [
+        {
+          "titulo": "Bootcamp gratuito ou com bolsa",
+          "descricao": "Inscreva-se em: Programadores do Amanhã (gratuito), Generation Brasil (gratuito + ajuda de custo), {reprograma} (gratuito para grupos específicos), Oracle Next Education (gratuito)."
+        },
+        {
+          "titulo": "Construir 3-5 projetos reais no GitHub",
+          "descricao": "Transforme seus joguinhos em projetos documentados. Crie um site de portfólio simples (GitHub Pages gratuito). Inclua: jogo em Python/JS, API REST, projeto com Linux/Docker."
+        },
+        {
+          "titulo": "Networking intenso e aplicação em massa",
+          "descricao": "LinkedIn ativo (poste projetos, comente conteúdo de tech). Participe de eventos: Campus Party, Hacktoberfest, meetups em SP. Candidate-se a 5-10 vagas/semana."
+        }
+      ],
+      "titulo": "Profissionalização Rápida: Bootcamp + Freelas + Portfólio",
+      "descricao": "Acelerar entrada no mercado via bootcamp intensivo (3-6 meses), construir portfólio robusto e buscar freelas/vagas júnior. Depois graduar com calma.",
+      "dificuldade": "Alta (exige disciplina intensa)"
+    }
+  ],
+  "faculdades": [
+    {
+      "nome": "USP - Universidade de São Paulo (Campus Leste)",
+      "tipo": "publica",
+      "bolsa": false,
+      "cidade": "São Paulo - SP",
+      "programa": "SISU + ENEM-USP",
+      "nota_enem": 720
+    },
+    {
+      "nome": "UNIFESP - Universidade Federal de São Paulo (Campus Zona Norte)",
+      "tipo": "federal",
+      "bolsa": false,
+      "cidade": "São Paulo - SP",
+      "programa": "SISU",
+      "nota_enem": 690
+    },
+    {
+      "nome": "UFABC - Universidade Federal do ABC",
+      "tipo": "federal",
+      "bolsa": false,
+      "cidade": "Santo André - SP",
+      "programa": "SISU",
+      "nota_enem": 710
+    },
+    {
+      "nome": "FATEC Guarulhos - Centro Paula Souza",
+      "tipo": "publica",
+      "bolsa": false,
+      "cidade": "Guarulhos - SP",
+      "programa": "Vestibular próprio (2x/ano)",
+      "nota_enem": 0
+    },
+    {
+      "nome": "IFSP - Instituto Federal de São Paulo (Campus Guarulhos)",
+      "tipo": "federal",
+      "bolsa": false,
+      "cidade": "Guarulhos - SP",
+      "programa": "SISU + processo seletivo próprio",
+      "nota_enem": 650
+    },
+    {
+      "nome": "Universidade Cruzeiro do Sul",
+      "tipo": "privada",
+      "bolsa": true,
+      "cidade": "São Paulo - SP",
+      "programa": "ProUni (bolsa integral até 100%)",
+      "nota_enem": 550
+    }
+  ],
+  "perfilLabel": "[SIMULADO] Desenvolvedor Autodidata em Ascensão",
+  "mapaCarreira": [
+    {
+      "id": "1",
+      "sub": "Portfólio GitHub + Perfil LinkedIn + Bootcamp",
+      "prazo": "1-3 meses",
+      "status": "active",
+      "titulo": "Estruturar Base"
+    },
+    {
+      "id": "2",
+      "sub": "Curso Técnico (ETEC/IFSP) ou SISU aprovado",
+      "prazo": "6 meses - 2 anos",
+      "status": "locked",
+      "titulo": "Formação Técnica"
+    },
+    {
+      "id": "3",
+      "sub": "Estágio ou Dev Júnior (R$ 2-4k)",
+      "prazo": "1-2 anos",
+      "status": "locked",
+      "titulo": "Primeiro Emprego Tech"
+    },
+    {
+      "id": "4",
+      "sub": "Ciência da Computação (pública ou bolsa)",
+      "prazo": "2-4 anos",
+      "status": "locked",
+      "titulo": "Graduação Consolidada"
+    },
+    {
+      "id": "5",
+      "sub": "Desenvolvedor experiente ou especialista (R$ 8-15k+)",
+      "prazo": "4-6 anos",
+      "status": "locked",
+      "titulo": "Pleno/Sênior"
+    }
+  ],
+  "areaPrincipal": "Tecnologia da Informação e Computação",
+  "cursosTecnicos": [
+    {
+      "nome": "Técnico em Desenvolvimento de Sistemas",
+      "duracao": "1,5 anos",
+      "gratuito": true,
+      "modalidade": "presencial",
+      "instituicao": "ETEC Guarulhos - Centro Paula Souza"
+    },
+    {
+      "nome": "Técnico em Informática para Internet",
+      "duracao": "2 anos",
+      "gratuito": true,
+      "modalidade": "presencial",
+      "instituicao": "IFSP Campus Guarulhos"
+    },
+    {
+      "nome": "Técnico em Redes de Computadores",
+      "duracao": "1,5 anos",
+      "gratuito": true,
+      "modalidade": "presencial",
+      "instituicao": "SENAI Guarulhos"
+    },
+    {
+      "nome": "Técnico em Programação de Jogos Digitais",
+      "duracao": "2 anos",
+      "gratuito": false,
+      "modalidade": "hibrido",
+      "instituicao": "SENAC SP (bolsas disponíveis)"
+    }
+  ],
+  "proximosPassos": [
+    {
+      "titulo": "Organize seu portfólio no GitHub ESTA SEMANA",
+      "descricao": "Crie uma conta no GitHub se não tem. Suba seus joguinhos com README explicando o projeto, tecnologias usadas e como rodar. Isso já vale como currículo técnico. Use GitHub Pages para criar um site de portfólio simples (templates gratuitos prontos)."
+    },
+    {
+      "titulo": "Inscreva-se no próximo SISU (verifique calendário MEC)",
+      "descricao": "Acesse sisu.mec.gov.br e simule suas chances com sua nota atual. Coloque UNIFESP, UFABC e FATEC como opções. Se as inscrições estiverem fechadas, prepare-se para a próxima: estude o edital, separe documentos, defina suas 2 escolhas."
+    },
+    {
+      "titulo": "Candidate-se a 1 bootcamp gratuito ESTE MÊS",
+      "descricao": "Acesse Generation Brasil, Oracle ONE e Programadores do Amanhã. Processos seletivos são rápidos (1-2 semanas). Mesmo se passar no SISU, o bootcamp agrega muito ao currículo e acelera sua entrada no mercado."
+    },
+    {
+      "titulo": "Visite pessoalmente ETEC/IFSP Guarulhos nas próximas 2 semanas",
+      "descricao": "Vá na secretaria e pegue informações sobre próximas turmas de técnico em Desenvolvimento. Pergunte sobre processo seletivo, grade, horários noturnos. Conhecer o espaço presencialmente ajuda a tomar decisão mais segura."
+    },
+    {
+      "titulo": "Atualize seu LinkedIn e comece networking ativo",
+      "descricao": "Crie/atualize perfil com suas habilidades (Linux, programação, jogos). Siga empresas de tech em Guarulhos/SP. Conecte com recrutadores e devs. Poste sobre seus projetos 1x por semana. Engajamento abre portas antes mesmo da formação."
+    }
+  ],
+  "areasSecundarias": [
+    {
+      "nome": "Desenvolvimento de Jogos Digitais",
+      "percentual": 85,
+      "justificativa": "Você já cria joguinhos simples. Essa área específica pode unir programação com criatividade e design de experiências."
+    },
+    {
+      "nome": "Segurança da Informação e Redes",
+      "percentual": 78,
+      "justificativa": "Seu conhecimento em Linux é valorizado aqui. Área em crescimento com boas vagas e cursos técnicos acessíveis."
+    }
+  ],
+  "pontosDeMelhoria": [
+    "Aprofundar conhecimento em estruturas de dados e algoritmos para competir em processos seletivos de tech",
+    "Construir portfólio público (GitHub) com projetos mais complexos para mostrar seu trabalho",
+    "Desenvolver inglês técnico para acessar documentações e ampliar oportunidades no mercado de TI"
+  ],
+  "programasGoverno": [
+    {
+      "nome": "SISU - Sistema de Seleção Unificada",
+      "descricao": "Use sua nota do ENEM para concorrer a vagas em universidades públicas. Duas edições por ano (geralmente janeiro e junho). Você pode escolher até 2 cursos.",
+      "comoAcessar": "Acesse o site do SISU com sua nota do ENEM válida. Simule antes no período de inscrição para ver suas chances reais em cada universidade.",
+      "linkOficial": "https://sisu.mec.gov.br/"
+    },
+    {
+      "nome": "ProUni - Programa Universidade para Todos",
+      "descricao": "Bolsas integrais (100%) ou parciais (50%) em faculdades privadas. Exige nota mínima 450 no ENEM e não ter zerado redação. Para renda familiar até 3 salários mínimos per capita.",
+      "comoAcessar": "Inscrição no site do ProUni nos mesmos períodos do SISU. Sua nota 720 na redação e 680 em matemática são competitivas para boas instituições privadas.",
+      "linkOficial": "https://prouniportal.mec.gov.br/"
+    },
+    {
+      "nome": "FIES - Fundo de Financiamento Estudantil",
+      "descricao": "Financiamento com juros baixos para cursos em faculdades privadas. Você paga depois de formado. Combina com ProUni parcial se precisar.",
+      "comoAcessar": "Inscrição pelo site do FIES. Exige nota mínima 450 no ENEM. Recomendo usar apenas se não conseguir vaga pública ou ProUni integral.",
+      "linkOficial": "https://fies.mec.gov.br/"
+    },
+    {
+      "nome": "NOVOTEC - Cursos Técnicos Gratuitos SP",
+      "descricao": "Programa do Governo de SP com cursos técnicos gratuitos em diversas áreas, incluindo TI. Muitos em parceria com empresas que oferecem contratação após o curso.",
+      "comoAcessar": "Inscrições pelo site do Centro Paula Souza ou direto nas ETECs. Abrem vagas semestralmente. Guarulhos tem unidades próximas.",
+      "linkOficial": "https://www.novotec.sp.gov.br/"
+    }
+  ],
+  "perfilResumoClaro": "Jovem programador que já pratica, domina Linux e busca formação sólida para profissionalizar sua paixão.",
+  "respostasDestaque": {
+    "sonho": "Ciência da Computação — transformar hobby de programação em carreira profissional sólida e reconhecida",
+    "ambienteIdeal": "Ambiente com autonomia para criar e resolver problemas técnicos (perfil autodidata indica preferência por desafios independentes)",
+    "principalDesafio": "Estruturar talento autodidata em formação reconhecida, equilibrando necessidade financeira com desenvolvimento de carreira",
+    "preferenciaTrabalho": "Trabalhar com tecnologia, especialmente desenvolvimento e sistemas (mencionou gostar de programar jogos e usar Linux)"
+  },
+  "mensagemPersonalizada": "[SIMULADO] Este plano é uma resposta pronta do modo IA_SIMULADA e não foi gerado a partir das suas respostas. Bruno, você está à frente de muita gente da sua idade! Já programa, faz jogos e mexe com Linux — isso é ouro no mercado. Com seu ENEM (especialmente matemática 680 e redação 720), você tem pontuação real para entrar em universidades públicas boas. Sua experiência como jovem aprendiz mostra maturidade. Agora é estruturar esse talento com formação e networking.",
+  "percentualCompatibilidade": 92,
+  "areaPrincipalJustificativa": "Você já programa, faz jogos e usa Linux. Tem afinidade prática e quer Ciência da Computação. É sua área natural."
+}
