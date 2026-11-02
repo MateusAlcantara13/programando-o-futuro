@@ -57,20 +57,37 @@ programando-o-futuro/
 
 ## 🚀 Como rodar localmente
 
-### Backend
+Sequência completa para quem acabou de clonar o repositório.
+
+### 1. Variáveis de ambiente
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+Abra `backend/.env` e preencha ao menos `ANTHROPIC_API_KEY` com uma chave válida. Os valores de banco já vêm prontos para combinar com o Docker do passo seguinte; não precisam de ajuste para rodar local.
+
+### 2. Banco de dados (Docker)
+
+```bash
+docker compose up -d
+```
+
+Sobe um MySQL 8 local, com os mesmos usuário, senha e nome de banco que `backend/.env.example` espera, e um volume (`db_dados`) para os dados persistirem entre reinícios. Para acompanhar os logs do banco: `docker compose logs -f db`. Para derrubar: `docker compose down` (os dados continuam no volume; para apagar tudo, `docker compose down -v`).
+
+### 3. Backend
 
 ```bash
 cd backend
-cp .env.example .env      # preencha com suas credenciais
 pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
-### Frontend
+> O backend não sobe sem `ANTHROPIC_API_KEY` configurada. A conexão com o banco local não usa TLS (`DB_SSL_DISABLED=true` já vem assim no `.env.example`); em produção essa variável não deve existir, para a conexão exigir TLS contra a Aiven. Nunca versione o arquivo `.env`, o `.gitignore` já o protege.
+
+### 4. Frontend
 
 Abra o `index.html` no navegador ou sirva a pasta raiz com um servidor local (a extensão Live Server do VS Code resolve).
-
-> O backend não sobe sem as variáveis de ambiente configuradas. Nunca versione o arquivo `.env`, o `.gitignore` já o protege.
 
 ## 🧪 Validação em campo
 

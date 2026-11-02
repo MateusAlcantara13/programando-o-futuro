@@ -21,6 +21,11 @@ ANTHROPIC_MODEL   = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
 JWT_SECRET        = os.getenv("JWT_SECRET", "dev-secret-troque-em-producao-2026")
 JWT_EXPIRES_H     = int(os.getenv("JWT_EXPIRES_H", "24"))
 IA_MAX_CONCORRENTES = int(os.getenv("IA_MAX_CONCORRENTES", "5"))
+# TLS do banco é obrigatório por padrão: sem DB_SSL_DISABLED=true explícito,
+# o comportamento é o de sempre exigir TLS. Esquecer de configurar quebra a
+# conexão em vez de conectar sem TLS silenciosamente.
+DB_SSL_DISABLED   = os.getenv("DB_SSL_DISABLED", "false").lower() == "true"
+DB_SSL_CA         = os.getenv("DB_SSL_CA", "backend/ca.pem")
 
 if ANTHROPIC_API_KEY:
     logger.info(f"✅ Chave: {ANTHROPIC_API_KEY[:12]}...{ANTHROPIC_API_KEY[-4:]}")
@@ -50,11 +55,14 @@ def _obter_ia_semaphore() -> asyncio.Semaphore:
 # ── BANCO DE DADOS ───────────────────────────────────────────────────────────
 async def init_db():
     global db_pool
-    ssl_ctx = ssl.create_default_context(
-        cafile=os.path.join(os.path.dirname(__file__), "ca.pem")
-    )
-    ssl_ctx.check_hostname = False
-    ssl_ctx.verify_mode = ssl.CERT_REQUIRED
+    ssl_ctx = None
+    if DB_SSL_DISABLED:
+        logger.warning("⚠️ TLS do banco DESLIGADO (DB_SSL_DISABLED=true). Use isso só em ambiente local.")
+    else:
+        # check_hostname fica no padrão (True) do create_default_context: o
+        # certificado precisa bater com o hostname de DB_HOST, não só com a CA.
+        ssl_ctx = ssl.create_default_context(cafile=DB_SSL_CA)
+        ssl_ctx.verify_mode = ssl.CERT_REQUIRED
     db_pool = await aiomysql.create_pool(
         host=os.getenv("DB_HOST", ""),
         port=int(os.getenv("DB_PORT", "3306")),

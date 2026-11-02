@@ -1,0 +1,22 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: programando-futuro-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: programando_futuro
+      MYSQL_USER: programando
+      MYSQL_PASSWORD: programando_local
+      MYSQL_ROOT_PASSWORD: programando_root_local
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_dados:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pprogramando_root_local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db_dados:
