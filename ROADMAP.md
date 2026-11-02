@@ -131,12 +131,13 @@ Como verificar: Ricardo segue o documento numa máquina onde o ambiente nunca fo
 
 **Reconexão do deploy.** Última tarefa da fase, só depois de todas as outras fechadas e do banco de produção resolvido. Antes de reconectar: confirmar no painel do Render que o serviço aponta para `MateusAlcantara13/programando-o-futuro`; cadastrar as variáveis de ambiente de produção, já sem nenhum valor padrão no código; usar `DB_SSL_MODE=verificar` com a CA do provedor novo; e confirmar que a `ADMIN_SECRET` foi trocada. Depois de reconectar, o `CLAUDE.md` volta a dizer que merge na `main` publica em produção.
 
-Quatro pendências descobertas em 01/11/2026, também antes de reconectar:
+Cinco pendências descobertas em 01/11/2026, também antes de reconectar:
 
 1. Gerar um `JWT_SECRET` aleatório e fazer a aplicação recusar subir em produção sem a variável definida. Faz parte da tarefa de remover os valores padrão de segredo, ver acima.
 2. Conferir o `DB_SSL_CA`. O valor padrão é um caminho relativo à raiz do repositório (`backend/ca.pem`), mas o backend roda de dentro de `backend/`, então esse caminho não encontra o arquivo.
 3. Confirmar a verificação de hostname do certificado contra o banco novo, com os testes (3) a (5) da configuração de TLS. Ela foi ativada no PR #5, mas não pôde ser testada, porque o banco local roda sem TLS.
 4. Implementar a consulta a `Ssl_cipher` na inicialização, que estava no plano da tarefa de TLS e ficou de fora do PR #5. Sem ela, a aplicação não tem como confirmar que o TLS está ativo em produção, só supor. A limitação descrita na hipótese acima continua: a consulta cobre a conexão da inicialização, e não as abertas depois pelo pool.
+5. Criar uma variável de ambiente que identifique onde a aplicação está rodando, para que os modos perigosos se recusem a ligar em produção em vez de só avisar no log. Hoje o código não tem como saber se está em produção, e três pontos dependem de ninguém esquecer uma variável: o `JWT_SECRET` com valor padrão, o `DB_SSL_DISABLED` e o `IA_SIMULADA`.
 
 ### Fase 1 — Confiabilidade (semanas 2 a 4, 07/09 a 27/09)
 
@@ -165,6 +166,12 @@ A linha de base precisa sair antes de qualquer mudança no prompt. Sem ela, não
 4. Tratamento de resposta truncada.
 
 A adaptação das telas de resultado da Fase 3 fica reservada para o Yago e o Ricardo.
+
+**Pendências registradas em 01/11/2026.**
+
+- **Folga curta entre a duração de uma geração e o timeout.** O `_chamar_ia_com_retry` usa timeout de 120 s. Três gerações reais completas, medidas em 01/11/2026 no ambiente local, uma de cada vez e sem concorrência, levaram 100,8 s, 93,6 s e 94,4 s (valor de `chamada=` no log). A folga é de 20 a 26 segundos. Como a API só devolve a resposta quando termina de gerar, esses 120 s funcionam como limite para a geração inteira, e uma API um pouco mais lenta sob carga basta para estourar o tempo e fazer o retry gerar o plano de novo do zero. Hipótese: isso explica parte das falhas por timeout da validação de maio. Não é causa comprovada, porque as medições foram feitas sem carga. A confirmação vem do teste de carga. O aumento do timeout é candidato a entrar nesta fase. Se ele mudar, o limite de 10 minutos da recuperação de job travado precisa ser recalculado, porque foi tirado do intervalo de cerca de 145 s entre heartbeats, que depende do timeout de 120 s.
+- **`/api/vagas` não passa pelo semáforo.** A rota chama `chamar_ia_lista`, que faz o POST direto para a API, sem semáforo, heartbeat nem retry. Com muitos alunos abrindo a página de oportunidades ao mesmo tempo, essas chamadas escapam do limite de concorrência. Não corrigido.
+- **Avaliar streaming na chamada à API.** Uma resposta de 8192 tokens que só chega quando termina é frágil por natureza. Com streaming, a resposta chega aos poucos, e o timeout passa a valer entre um pedaço e outro, em vez de valer para a geração inteira. É uma mudança grande e fica para depois do teste de carga.
 
 ### Fase 2 — Estrutura (semanas 5 a 8, 28/09 a 25/10)
 
