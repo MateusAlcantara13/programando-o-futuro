@@ -1,4 +1,4 @@
-"""Migração: colunas `tentativas` e `atualizado_em` na tabela `jobs`.
+"""Migração: colunas `tentativas`, `atualizado_em` e `recuperacoes` na tabela `jobs`.
 
 Roda sozinha no startup da aplicação (ver init_db em main.py) e também pode
 ser executada à mão contra um banco, a partir da pasta backend/:
@@ -63,6 +63,16 @@ async def _migrar_tentativas(cur):
     logger.info("migracao jobs.tentativas: coluna criada")
 
 
+async def _migrar_recuperacoes(cur):
+    # Quantas vezes a recuperação de job travado reenfileirou o job. Fica
+    # separada de tentativas, que é zerada a cada reenfileiramento.
+    if await _info_coluna(cur, "jobs", "recuperacoes") is not None:
+        logger.info("migracao jobs.recuperacoes: coluna já existe, nada a fazer")
+        return
+    await cur.execute("ALTER TABLE jobs ADD COLUMN recuperacoes INT NOT NULL DEFAULT 0")
+    logger.info("migracao jobs.recuperacoes: coluna criada")
+
+
 async def _migrar_atualizado_em(cur):
     # Passo 1: cria a coluna NULA e SEM default. Sem default, as linhas
     # existentes ficam NULL em vez de receber a data da migração.
@@ -104,6 +114,7 @@ async def migrar_jobs_heartbeat(conn):
         try:
             await _migrar_tentativas(cur)
             await _migrar_atualizado_em(cur)
+            await _migrar_recuperacoes(cur)
         except Exception as e:
             logger.error(f"migracao jobs: falhou com {type(e).__name__}: {e}. {COMO_RESOLVER}")
             raise
@@ -113,7 +124,7 @@ async def verificar_jobs_heartbeat(conn):
     """Recusa seguir se as colunas não existirem ou aceitarem NULL."""
     problemas = []
     async with conn.cursor() as cur:
-        for coluna in ("tentativas", "atualizado_em"):
+        for coluna in ("tentativas", "atualizado_em", "recuperacoes"):
             nulo = await _info_coluna(cur, "jobs", coluna)
             if nulo is None:
                 problemas.append(f"a coluna jobs.{coluna} não existe")
@@ -132,7 +143,7 @@ async def verificar_jobs_heartbeat(conn):
         )
         logger.error(msg)
         raise EsquemaJobsInvalido(msg)
-    logger.info("migracao jobs: verificação ok (tentativas e atualizado_em presentes e NOT NULL)")
+    logger.info("migracao jobs: verificação ok (tentativas, atualizado_em e recuperacoes presentes e NOT NULL)")
 
 
 async def _executar_manual():
