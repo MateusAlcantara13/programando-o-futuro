@@ -682,6 +682,9 @@ async def _chamar_ia_com_retry(prompt: str, job_id: Optional[str] = None) -> dic
             raise RuntimeError(f"Erro interno da IA (código {resp.status_code}): {detalhe}")
 
         # Parsear resposta
+        # Os logs de falha abaixo registram tamanho e motivo, nunca o texto:
+        # a resposta repete dados que o aluno escreveu no questionário.
+        stop_reason = resp.json().get("stop_reason")
         texto = "".join(b.get("text", "") for b in resp.json().get("content", []))
         texto = texto.strip()
         texto = re.sub(r'```json\s*', '', texto)
@@ -692,12 +695,18 @@ async def _chamar_ia_com_retry(prompt: str, job_id: Optional[str] = None) -> dic
             try:
                 return json.loads(match.group())
             except Exception as parse_err:
-                logger.error(f"Erro ao parsear JSON na tentativa {tentativa}: {parse_err}")
+                logger.error(
+                    f"Erro ao parsear JSON na tentativa {tentativa}: {type(parse_err).__name__} "
+                    f"(tamanho={len(texto)} caracteres, stop_reason={stop_reason})"
+                )
                 if tentativa < MAX_TENTATIVAS:
                     await asyncio.sleep(ESPERA_ENTRE_TENTATIVAS[tentativa - 1])
                     continue
                 raise RuntimeError("A IA retornou uma resposta em formato inválido após 3 tentativas.")
-        logger.error(f"JSON inválido recebido na tentativa {tentativa}: {texto[:300]}")
+        logger.error(
+            f"JSON inválido na tentativa {tentativa}: nenhum objeto JSON na resposta "
+            f"(tamanho={len(texto)} caracteres, stop_reason={stop_reason})"
+        )
         if tentativa < MAX_TENTATIVAS:
             await asyncio.sleep(ESPERA_ENTRE_TENTATIVAS[tentativa - 1])
             continue
@@ -738,9 +747,19 @@ def formatar_resposta_teste(pergunta: dict, resposta: dict) -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 # ADMIN
 # ══════════════════════════════════════════════════════════════════════════════
+def _senha_admin_valida(senha: str) -> bool:
+    """Compara a senha do admin em tempo constante.
+
+    Com !=, a comparação para no primeiro caractere diferente, e o tempo de
+    resposta revela quantos caracteres do início estão certos. compare_digest
+    leva o mesmo tempo qualquer que seja o ponto da diferença. A conversão
+    para bytes aceita senha com acento, que compare_digest recusa em str.
+    """
+    return hmac.compare_digest(senha.encode("utf-8"), ADMIN_SECRET.encode("utf-8"))
+
 @app.get("/api/admin/usuarios")
 async def admin_usuarios(senha: str):
-    if senha != ADMIN_SECRET:
+    if not _senha_admin_valida(senha):
         raise HTTPException(status_code=403)
     async with db_pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
@@ -749,7 +768,7 @@ async def admin_usuarios(senha: str):
 
 @app.get("/api/admin/dados")
 async def admin_dados(senha: str):
-    if senha != ADMIN_SECRET:
+    if not _senha_admin_valida(senha):
         raise HTTPException(status_code=403)
     async with db_pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
@@ -783,7 +802,7 @@ async def admin_dados(senha: str):
 
 @app.get("/api/admin/respostas/{usuario_id}")
 async def admin_respostas_usuario(usuario_id: str, senha: str):
-    if senha != ADMIN_SECRET:
+    if not _senha_admin_valida(senha):
         raise HTTPException(status_code=403)
     async with db_pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
@@ -800,7 +819,7 @@ async def admin_respostas_usuario(usuario_id: str, senha: str):
 
 @app.delete("/api/admin/usuario/{usuario_id}")
 async def admin_deletar_usuario(usuario_id: str, senha: str):
-    if senha != ADMIN_SECRET:
+    if not _senha_admin_valida(senha):
         raise HTTPException(status_code=403)
     async with db_pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -809,7 +828,7 @@ async def admin_deletar_usuario(usuario_id: str, senha: str):
 
 @app.delete("/api/admin/reset")
 async def admin_reset(senha: str):
-    if senha != ADMIN_SECRET:
+    if not _senha_admin_valida(senha):
         raise HTTPException(status_code=403)
     async with db_pool.acquire() as conn:
         async with conn.cursor() as cur:
