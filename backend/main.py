@@ -18,22 +18,77 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 BASE_DIR = os.path.join(os.path.dirname(__file__), "..")
+
+
+def _variavel_obrigatoria(nome: str) -> str:
+    """Lê uma variável de ambiente obrigatória. Ausente ou vazia, a aplicação não sobe.
+
+    A mensagem de erro cita só o nome da variável, nunca o valor.
+    """
+    valor = os.getenv(nome, "")
+    if not valor.strip():
+        raise RuntimeError(
+            f"Variável de ambiente {nome} não definida. A aplicação não inicia sem ela. "
+            "Veja backend/.env.example."
+        )
+    return valor
+
+
+# Onde a aplicação está rodando: "local" ou "producao". Obrigatória e sem
+# valor padrão. Com padrão "local", esquecer a variável no servidor
+# desligaria em silêncio as travas de produção logo abaixo.
+AMBIENTES_VALIDOS = ("local", "producao")
+AMBIENTE = _variavel_obrigatoria("AMBIENTE").strip()
+if AMBIENTE not in AMBIENTES_VALIDOS:
+    raise RuntimeError(
+        f"AMBIENTE='{AMBIENTE}' inválido. Use um de: {', '.join(AMBIENTES_VALIDOS)}."
+    )
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL   = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
-JWT_SECRET        = os.getenv("JWT_SECRET", "dev-secret-troque-em-producao-2026")
+# Sem valor padrão: quem conhece o segredo assina token de qualquer usuário.
+JWT_SECRET        = _variavel_obrigatoria("JWT_SECRET")
 JWT_EXPIRES_H     = int(os.getenv("JWT_EXPIRES_H", "24"))
+# Senha das rotas /api/admin/*. Sem valor padrão: o valor antigo está no
+# histórico público do repositório.
+ADMIN_SECRET      = _variavel_obrigatoria("ADMIN_SECRET")
 IA_MAX_CONCORRENTES = int(os.getenv("IA_MAX_CONCORRENTES", "5"))
 # TLS do banco é obrigatório por padrão: sem DB_SSL_DISABLED=true explícito,
 # o comportamento é o de sempre exigir TLS. Esquecer de configurar quebra a
 # conexão em vez de conectar sem TLS silenciosamente.
 DB_SSL_DISABLED   = os.getenv("DB_SSL_DISABLED", "false").lower() == "true"
-DB_SSL_CA         = os.getenv("DB_SSL_CA", "backend/ca.pem")
+# Caminho do certificado da CA. O processo pode ser iniciado de dentro de
+# backend/ ou da raiz, e um caminho relativo comum dependeria disso. Por
+# isso, caminho relativo em DB_SSL_CA é sempre lido a partir da raiz do
+# repositório, e sem a variável vale o ca.pem que fica ao lado deste arquivo.
+_db_ssl_ca_env    = os.getenv("DB_SSL_CA", "").strip()
+if not _db_ssl_ca_env:
+    DB_SSL_CA     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ca.pem")
+elif os.path.isabs(_db_ssl_ca_env):
+    DB_SSL_CA     = _db_ssl_ca_env
+else:
+    DB_SSL_CA     = os.path.normpath(os.path.join(os.path.abspath(BASE_DIR), _db_ssl_ca_env))
 # IA simulada: desligada por padrão, só liga com IA_SIMULADA=true explícito.
 # Valor inválido nas variáveis IA_SIMULADA_* impede a aplicação de iniciar.
 ia_simulada.configurar()
 
+# Travas de produção: modos que só fazem sentido na máquina de quem
+# desenvolve impedem a aplicação de subir com AMBIENTE=producao.
+if AMBIENTE == "producao":
+    if ia_simulada.config.ativa:
+        raise RuntimeError(
+            "IA_SIMULADA=true não é permitido com AMBIENTE=producao: todo plano gerado "
+            "seria falso. Remova IA_SIMULADA das variáveis de produção."
+        )
+    if DB_SSL_DISABLED:
+        raise RuntimeError(
+            "DB_SSL_DISABLED=true não é permitido com AMBIENTE=producao: a conexão com o "
+            "banco seguiria sem TLS. Remova DB_SSL_DISABLED das variáveis de produção."
+        )
+logger.info(f"🌎 Ambiente: {AMBIENTE}")
+
+# Só registra se a chave existe. Nenhum pedaço do valor vai para o log.
 if ANTHROPIC_API_KEY:
-    logger.info(f"✅ Chave: {ANTHROPIC_API_KEY[:12]}...{ANTHROPIC_API_KEY[-4:]}")
+    logger.info("✅ ANTHROPIC_API_KEY definida")
 else:
     logger.error("❌ ANTHROPIC_API_KEY não encontrada!")
 
@@ -70,7 +125,7 @@ async def criar_pool():
         # certificado precisa bater com o hostname de DB_HOST, não só com a CA.
         ssl_ctx = ssl.create_default_context(cafile=DB_SSL_CA)
         ssl_ctx.verify_mode = ssl.CERT_REQUIRED
-    return await aiomysql.create_pool(
+    pool = await aiomysql.create_pool(
         host=os.getenv("DB_HOST", ""),
         port=int(os.getenv("DB_PORT", "3306")),
         user=os.getenv("DB_USER", ""),
@@ -81,6 +136,34 @@ async def criar_pool():
         minsize=1,
         maxsize=10,
     )
+    if not DB_SSL_DISABLED:
+        await _confirmar_tls(pool)
+    return pool
+
+async def _confirmar_tls(pool):
+    """Confere no servidor que a conexão está mesmo cifrada. Sem TLS, fecha o pool e aborta.
+
+    Pedir TLS não garante que ele foi negociado. Quem decide é o handshake, e
+    o MySQL informa o resultado em Ssl_cipher: vazio quer dizer texto claro.
+
+    LIMITAÇÃO CONHECIDA: a consulta vale só para a conexão aberta aqui, na
+    inicialização. As conexões que o pool abrir depois não são conferidas.
+    Ver no ROADMAP.md a hipótese do atacante que retira o anúncio de TLS do
+    handshake, na seção de configuração de TLS do banco.
+    """
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("SHOW SESSION STATUS LIKE 'Ssl_cipher'")
+            linha = await cur.fetchone()
+    cifra = linha[1] if linha else ""
+    if not cifra:
+        pool.close()
+        await pool.wait_closed()
+        raise RuntimeError(
+            "A conexão com o banco foi aberta sem TLS (Ssl_cipher vazio). "
+            "A aplicação não inicia sem TLS ativo."
+        )
+    logger.info(f"🔒 TLS do banco confirmado (cifra {cifra})")
 
 async def init_db():
     global db_pool
@@ -657,7 +740,7 @@ def formatar_resposta_teste(pergunta: dict, resposta: dict) -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 @app.get("/api/admin/usuarios")
 async def admin_usuarios(senha: str):
-    if senha != os.getenv("ADMIN_SECRET", "25107Senai"):
+    if senha != ADMIN_SECRET:
         raise HTTPException(status_code=403)
     async with db_pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
@@ -666,7 +749,7 @@ async def admin_usuarios(senha: str):
 
 @app.get("/api/admin/dados")
 async def admin_dados(senha: str):
-    if senha != os.getenv("ADMIN_SECRET", ""):
+    if senha != ADMIN_SECRET:
         raise HTTPException(status_code=403)
     async with db_pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
@@ -700,7 +783,7 @@ async def admin_dados(senha: str):
 
 @app.get("/api/admin/respostas/{usuario_id}")
 async def admin_respostas_usuario(usuario_id: str, senha: str):
-    if senha != os.getenv("ADMIN_SECRET", ""):
+    if senha != ADMIN_SECRET:
         raise HTTPException(status_code=403)
     async with db_pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
@@ -717,7 +800,7 @@ async def admin_respostas_usuario(usuario_id: str, senha: str):
 
 @app.delete("/api/admin/usuario/{usuario_id}")
 async def admin_deletar_usuario(usuario_id: str, senha: str):
-    if senha != os.getenv("ADMIN_SECRET", ""):
+    if senha != ADMIN_SECRET:
         raise HTTPException(status_code=403)
     async with db_pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -726,7 +809,7 @@ async def admin_deletar_usuario(usuario_id: str, senha: str):
 
 @app.delete("/api/admin/reset")
 async def admin_reset(senha: str):
-    if senha != os.getenv("ADMIN_SECRET", ""):
+    if senha != ADMIN_SECRET:
         raise HTTPException(status_code=403)
     async with db_pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -792,7 +875,8 @@ async def cadastro(body: CadastroBody):
                 "aceite_menor": body.aceite_menor, "teste_inicial_concluido": False,
                 "modulos_concluidos": [], "criado_em": datetime.utcnow().isoformat()
             }
-            logger.info(f"✅ Cadastro: {body.email}")
+            # O id identifica o cadastro no log sem expor dado pessoal do aluno.
+            logger.info(f"✅ Cadastro: usuario_id={uid}")
             return {"token": gerar_token(uid, body.email), "usuario": usuario}
 
 @app.post("/api/auth/login")
@@ -1011,7 +1095,7 @@ async def processar_resultado_ia_db(job_id: str, uid: str, usuario: dict, origem
         elif "inválida" in erro_raw.lower() or "401" in erro_raw:
             erro_admin = f" Chave de API inválida ({origem}). Verificar ANTHROPIC_API_KEY nas variáveis de ambiente."
         elif "formato" in erro_raw.lower() or "json" in erro_raw.lower():
-            erro_admin = f"teste_carga.py IA retornou resposta em formato inválido ({origem}). Pode ser instabilidade da API."
+            erro_admin = f" IA retornou resposta em formato inválido ({origem}). Pode ser instabilidade da API."
         else:
             erro_admin = f"❌ Erro inesperado ({origem}): {erro_raw[:200]}"
         async with db_pool.acquire() as conn:
