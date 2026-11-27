@@ -27,7 +27,7 @@ Cobre: POST do progresso grava em mapa_progresso com o UUID completo do
 aluno; navegador novo, sem nada guardado, carrega o passo marcado do
 servidor; cache local desatualizado é sobrescrito pelo servidor.
 """
-import json, os, sys, warnings
+import json, os, re, sys, warnings
 
 BACKEND = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 RAIZ = os.path.join(BACKEND, "..")
@@ -42,6 +42,7 @@ except ImportError:
     sys.exit("Falta o QuickJS: pip install -r backend/requirements-dev.txt")
 
 BANCO = "teste_mapa_ciclo"
+DATA_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 os.environ.update({
     "ANTHROPIC_API_KEY": "chave-falsa-de-teste-0000",
     "AMBIENTE": "local",
@@ -147,20 +148,23 @@ try:
         print("\n== 2. O banco tem a linha, com o UUID completo ==")
         linhas = sql("SELECT usuario_id, etapas_concluidas FROM mapa_progresso")
         checa(len(linhas) == 1 and linhas[0][0] == uid, f"usuario_id gravado = {linhas[0][0] if linhas else None}")
-        checa(json.loads(linhas[0][1]) == {"inicio-0": True} if linhas else False, "etapas gravadas")
+        gravadas = json.loads(linhas[0][1]) if linhas else {}
+        # Desde o Bloco 5 o servidor grava a data de conclusão no lugar de true.
+        checa(list(gravadas) == ["inicio-0"] and DATA_ISO.match(str(gravadas["inicio-0"])),
+              f"etapa gravada com data do servidor: {gravadas}")
 
         print("\n== 3. Navegador novo, sem nada guardado: o passo vem do servidor ==")
         ctx.eval("var nav2 = navegador(new FakeStorage());")
         checa(esperar("nav2.carregar()") == "servidor", "carga veio do servidor")
-        checa(js("nav2.estado.etapasConcluidas") == {"inicio-0": True}, "passo continua marcado")
+        checa(js("nav2.estado.etapasConcluidas") == gravadas, "passo continua marcado, com a data do servidor")
         checa(js("nav2.estado.checksFeitos") == {"inicio-0": {"inicio-0-1": True}}, "checklist continua marcado")
 
         print("\n== 4. Cache desatualizado perde para o servidor ==")
         ctx.eval("var velho = new FakeStorage(); velho.setItem('pf_mapa_done', '{}');"
                  "var nav3 = navegador(velho);")
         esperar("nav3.carregar()")
-        checa(js("nav3.estado.etapasConcluidas") == {"inicio-0": True}, "estado é o do servidor")
-        checa(json.loads(js("velho.getItem('pf_mapa_done')")) == {"inicio-0": True}, "cache sobrescrito")
+        checa(js("nav3.estado.etapasConcluidas") == gravadas, "estado é o do servidor")
+        checa(json.loads(js("velho.getItem('pf_mapa_done')")) == gravadas, "cache sobrescrito")
 finally:
     sql(f"DROP DATABASE IF EXISTS {BANCO}", db=None)
 
