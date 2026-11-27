@@ -1,5 +1,25 @@
 # Programando o Futuro
 
+> [!CAUTION]
+> **NÃO RELIGAR O DEPLOY antes de rodar com MySQL local os oito testes abaixo e ver todos passarem.**
+> Pendência da reconexão do deploy, registrada em 26/11/2026.
+>
+> Os PRs #10, #11 e #12 foram para a `main` sem esses testes rodarem, porque o Docker não subiu na máquina usada. Na `main`, isso não toca em nada: o deploy está desligado desde 08/10/2026, e as migrações só rodam quando a aplicação sobe. O risco está em religar o deploy. A primeira subida roda as migrações sozinha contra o banco de produção, que guarda dados reais de alunos menores de idade:
+> - A migração do Bloco 3 (`backend/migracoes/usuarios_aceite_lgpd.py`) torna `usuarios.aceite_lgpd` NOT NULL e sem padrão. Se houver no Aiven alguma linha com `aceite_lgpd` nulo, ela para e a aplicação não sobe.
+> - A migração do Bloco 2 (`backend/migracoes/mapa_progresso_usuario_id.py`) altera `mapa_progresso.usuario_id` de INT para VARCHAR(36), sozinha, no startup.
+>
+> Os oito testes, todos em `backend/testes/`:
+> 1. `teste_recuperacao_jobs.py`
+> 2. `teste_migracao_mapa.py`
+> 3. `teste_migracao.py`
+> 4. `teste_mapa_progresso.py`
+> 5. `teste_dados_db.py`
+> 6. `teste_plano_db.py`
+> 7. `teste_heartbeat.py`
+> 8. `teste_ia_simulada.py`
+>
+> Como rodar está no cabeçalho de cada arquivo. Os que usam QuickJS precisam de `pip install -r backend/requirements-dev.txt`. Só apague este aviso depois que os oito passarem.
+
 Plataforma web que gera planos de carreira personalizados para estudantes de escola pública usando a API do Claude. Projeto de extensão do Centro Universitário SENAI-SP. Validado em campo na escola parceira em maio de 2026, com 31 alunos.
 
 O sistema está fora do ar, mas os dados reais de alunos, incluindo menores de idade, continuam no banco de produção. O mesmo cuidado se aplica a toda alteração.

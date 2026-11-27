@@ -11,6 +11,9 @@ import asyncio, httpx, os, logging, jwt, uuid, json, re, random, ssl, hmac, time
 import aiomysql
 import bcrypt
 from migracoes.jobs_heartbeat import migrar_jobs_heartbeat, verificar_jobs_heartbeat
+from migracoes.mapa_progresso_usuario_id import (
+    migrar_mapa_progresso_usuario_id, verificar_mapa_progresso_usuario_id,
+)
 import ia_simulada
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -52,6 +55,61 @@ JWT_EXPIRES_H     = int(os.getenv("JWT_EXPIRES_H", "24"))
 # histórico público do repositório.
 ADMIN_SECRET      = _variavel_obrigatoria("ADMIN_SECRET")
 IA_MAX_CONCORRENTES = int(os.getenv("IA_MAX_CONCORRENTES", "5"))
+
+
+def _inteiro_positivo(nome: str, padrao: str) -> int:
+    """Lê um inteiro maior que zero da variável de ambiente. Valor inválido impede a aplicação de iniciar."""
+    bruto = os.getenv(nome, padrao).strip()
+    try:
+        valor = int(bruto)
+    except ValueError:
+        valor = 0
+    if valor < 1:
+        raise RuntimeError(f"{nome}='{bruto}' inválido. Use um inteiro maior que zero, por exemplo {padrao}.")
+    return valor
+
+
+# Limite próprio para as chamadas curtas de lista (/api/vagas). Separado do
+# limite da geração do plano para a chamada de ~20 s não esperar atrás de uma
+# fila de gerações de ~100 s. O teto real de chamadas simultâneas à API é
+# IA_MAX_CONCORRENTES + IA_MAX_CONCORRENTES_LISTA.
+IA_MAX_CONCORRENTES_LISTA = _inteiro_positivo("IA_MAX_CONCORRENTES_LISTA", "2")
+# Quantas vezes a recuperação pode reenfileirar o mesmo job. No teto, o job é
+# encerrado como erro: sem isso, um job que derruba o processo voltaria para
+# a fila a cada reinício, e cada volta é uma geração paga.
+# CUSTO NO PIOR CASO: recuperações e tentativas se multiplicam. Cada
+# recuperação é uma execução nova com as suas próprias 3 tentativas. Com o
+# padrão 2: (1 execução original + 2 recuperações) x 3 tentativas = até 9
+# chamadas pagas para o mesmo aluno. Fórmula: (IA_MAX_RECUPERACOES + 1) x 3.
+# O número definitivo sai do teste de carga.
+IA_MAX_RECUPERACOES = _inteiro_positivo("IA_MAX_RECUPERACOES", "2")
+
+
+def _segundos_positivos(nome: str, padrao: str) -> float:
+    """Lê um tempo em segundos da variável de ambiente. Valor inválido impede a aplicação de iniciar."""
+    bruto = os.getenv(nome, padrao).strip()
+    try:
+        valor = float(bruto)
+    except ValueError:
+        valor = float("nan")
+    # A comparação dupla recusa também nan e infinito.
+    if not 0 < valor < float("inf"):
+        raise RuntimeError(
+            f"{nome}='{bruto}' inválido. Use um número de segundos maior que zero, por exemplo {padrao}."
+        )
+    return valor
+
+
+# Timeout de leitura da chamada que gera o plano. Uma geração real leva de
+# 94 a 101 s (medido em 01/11/2026). Com 120 s a folga era de 20 a 26 s, e
+# cada estouro dispara um retry que gera o plano inteiro de novo. O valor
+# definitivo sai do teste de carga. Um timeout alto só é seguro porque o
+# semáforo limita quantas chamadas ficam abertas ao mesmo tempo.
+# Custo aceito em 26/11/2026, a medir no teste de carga antes de otimizar:
+# no pior caso, as três tentativas estouram o tempo e um único job ocupa uma
+# vaga do semáforo por cerca de 3 x IA_TIMEOUT_S mais as esperas (~15 min
+# com 300 s), enquanto os outros alunos esperam na fila.
+IA_TIMEOUT_S        = _segundos_positivos("IA_TIMEOUT_S", "300")
 # TLS do banco é obrigatório por padrão: sem DB_SSL_DISABLED=true explícito,
 # o comportamento é o de sempre exigir TLS. Esquecer de configurar quebra a
 # conexão em vez de conectar sem TLS silenciosamente.
@@ -100,12 +158,43 @@ async def startup():
         logger.warning(ia_simulada.aviso_startup())
     await init_db()
     _obter_ia_semaphore()
-    logger.info(f"🚦 Limite de chamadas simultâneas à IA: {IA_MAX_CONCORRENTES}")
+    _obter_ia_semaphore_lista()
+    logger.info(
+        f"🚦 Chamadas simultâneas à IA: até {IA_MAX_CONCORRENTES} gerando plano e "
+        f"{IA_MAX_CONCORRENTES_LISTA} gerando lista, teto total {IA_MAX_CONCORRENTES + IA_MAX_CONCORRENTES_LISTA}"
+    )
+    logger.info(f"⏱️ Timeout da chamada que gera o plano: {IA_TIMEOUT_S:.0f}s")
+    try:
+        await recuperar_jobs_orfaos()
+    except Exception as e:
+        # Não impede a aplicação de subir: atender os alunos vale mais. Os
+        # órfãos ficam para a próxima inicialização, porque a varredura
+        # periódica não toca em job com tentativas = 0.
+        logger.error(f"Recuperação de jobs órfãos falhou na inicialização: {type(e).__name__}: {e}")
+    app.state.varredura_jobs = asyncio.create_task(_varrer_jobs_periodicamente())
+    logger.info(
+        f"🧹 Varredura de jobs travados a cada {VARREDURA_JOBS_INTERVALO_S}s, "
+        f"limite sem heartbeat {LIMITE_JOB_TRAVADO_S}s, até {IA_MAX_RECUPERACOES} recuperação(ões) por job"
+    )
+
+@app.on_event("shutdown")
+async def shutdown():
+    varredura = getattr(app.state, "varredura_jobs", None)
+    if varredura:
+        varredura.cancel()
 security = HTTPBearer()
 
 
 db_pool = None
 ia_semaphore: Optional[asyncio.Semaphore] = None
+ia_semaphore_lista: Optional[asyncio.Semaphore] = None
+
+def _obter_ia_semaphore_lista() -> asyncio.Semaphore:
+    """Semáforo das chamadas de lista (/api/vagas), criado sob demanda como o da geração do plano."""
+    global ia_semaphore_lista
+    if ia_semaphore_lista is None:
+        ia_semaphore_lista = asyncio.Semaphore(IA_MAX_CONCORRENTES_LISTA)
+    return ia_semaphore_lista
 
 def _obter_ia_semaphore() -> asyncio.Semaphore:
     """Cria o semáforo sob demanda, caso chamar_ia seja usada sem o startup do app ter rodado (ex.: testes)."""
@@ -174,6 +263,8 @@ async def init_db():
     async with db_pool.acquire() as conn:
         await migrar_jobs_heartbeat(conn)
         await verificar_jobs_heartbeat(conn)
+        await migrar_mapa_progresso_usuario_id(conn)
+        await verificar_mapa_progresso_usuario_id(conn)
     logger.info("✅ Banco de dados conectado!")
 
 async def criar_tabelas():
@@ -222,7 +313,7 @@ async def criar_tabelas():
         )""",
         """CREATE TABLE IF NOT EXISTS mapa_progresso (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            usuario_id INT NOT NULL,
+            usuario_id VARCHAR(36) NOT NULL,
             etapas_concluidas TEXT,
             checks_feitos TEXT,
             atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -236,6 +327,7 @@ async def criar_tabelas():
             criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
             tentativas INT NOT NULL DEFAULT 0,
             atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            recuperacoes INT NOT NULL DEFAULT 0,
             FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
         )"""
         # Bancos que já existiam recebem essas duas colunas pela migração em
@@ -573,6 +665,33 @@ async def chamar_ia(prompt: str, job_id: Optional[str] = None) -> dict:
 
 HEARTBEAT_TIMEOUT_S = 5.0
 
+# Tempos da chamada do plano. Ficam aqui, com nome, porque o limite de job
+# travado (LIMITE_JOB_TRAVADO_S) é calculado a partir deles.
+IA_CONNECT_TIMEOUT_S = 15.0
+ESPERA_ENTRE_TENTATIVAS = (5, 15)   # segundos antes da 2ª e da 3ª tentativa
+ESPERA_EXTRA_RATE_LIMIT = 10        # somada à espera quando a API devolve 429
+
+
+def limite_job_travado_s(timeout_s: float) -> int:
+    """Segundos sem heartbeat a partir dos quais um job que já começou é considerado travado.
+
+    O heartbeat é gravado no início de cada tentativa. Entre um início e o
+    seguinte cabem, no pior caso: a conexão, a chamada até o timeout, a maior
+    espera antes de tentar de novo (com o acréscimo do 429) e a gravação do
+    próprio heartbeat. Margem de 2x sobre esse pior caso, porque o timeout do
+    httpx vale por operação de rede e não para a chamada inteira.
+    Com timeout de 300 s: 2 x (15 + 300 + 15 + 10 + 5) = 690 s.
+    """
+    pior_intervalo = (
+        IA_CONNECT_TIMEOUT_S + timeout_s + max(ESPERA_ENTRE_TENTATIVAS)
+        + ESPERA_EXTRA_RATE_LIMIT + HEARTBEAT_TIMEOUT_S
+    )
+    return int(2 * pior_intervalo)
+
+
+LIMITE_JOB_TRAVADO_S = limite_job_travado_s(IA_TIMEOUT_S)
+VARREDURA_JOBS_INTERVALO_S = 60
+
 async def _registrar_heartbeat(job_id: str) -> None:
     """Marca o início de uma tentativa de chamada à IA para o job.
 
@@ -582,9 +701,8 @@ async def _registrar_heartbeat(job_id: str) -> None:
       Enquanto o processo está vivo, isso NÃO indica job travado, mesmo com
       atualizado_em antigo (ele continua igual a criado_em até a 1ª tentativa).
     - tentativas > 0 e atualizado_em antigo: começou uma tentativa e parou de
-      dar sinal. Entre dois heartbeats saudáveis cabem até ~145 s (timeout de
-      120 s do httpx mais a maior espera entre tentativas, 15 + 10 s), então o
-      limite de "travado" precisa ser maior que isso.
+      dar sinal. O limite de "travado" é LIMITE_JOB_TRAVADO_S, calculado a
+      partir do timeout da chamada (ver limite_job_travado_s).
 
     Falha aqui não interrompe a chamada: perder uma geração paga por uma
     oscilação do banco é pior do que perder um heartbeat. O custo é que a
@@ -618,7 +736,7 @@ async def _enviar_para_ia(prompt: str, max_tokens: int, timeout: float, tipo: st
     """
     if ia_simulada.config.ativa:
         return await ia_simulada.enviar(tipo)
-    async with httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=15.0)) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=IA_CONNECT_TIMEOUT_S)) as client:
         return await client.post(
             "https://api.anthropic.com/v1/messages",
             headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json"},
@@ -626,9 +744,18 @@ async def _enviar_para_ia(prompt: str, max_tokens: int, timeout: float, tipo: st
         )
 
 
+MAX_TOKENS_PLANO = 8192
+
+
+class RespostaTruncada(RuntimeError):
+    """A IA parou no limite de max_tokens e o JSON veio cortado.
+
+    Não entra no retry: o prompt e o limite são os mesmos, então a nova
+    tentativa trunca de novo e cada uma é paga. Falha na primeira vez.
+    """
+
 async def _chamar_ia_com_retry(prompt: str, job_id: Optional[str] = None) -> dict:
     MAX_TENTATIVAS = 3
-    ESPERA_ENTRE_TENTATIVAS = [5, 15]  # segundos entre tentativas
 
     for tentativa in range(1, MAX_TENTATIVAS + 1):
         # Já dentro do semáforo: este é o início real da tentativa.
@@ -637,7 +764,7 @@ async def _chamar_ia_com_retry(prompt: str, job_id: Optional[str] = None) -> dic
             await _registrar_heartbeat(job_id)
         try:
             logger.info(f"🤖 Chamando IA — tentativa {tentativa}/{MAX_TENTATIVAS}")
-            resp = await _enviar_para_ia(prompt, max_tokens=8192, timeout=120.0, tipo="plano")
+            resp = await _enviar_para_ia(prompt, max_tokens=MAX_TOKENS_PLANO, timeout=IA_TIMEOUT_S, tipo="plano")
         except httpx.TimeoutException:
             msg = f"A IA demorou demais para responder (tentativa {tentativa}/{MAX_TENTATIVAS}). Muitos usuários simultâneos."
             logger.warning(f"⏱️ Timeout na tentativa {tentativa}: {msg}")
@@ -663,7 +790,7 @@ async def _chamar_ia_com_retry(prompt: str, job_id: Optional[str] = None) -> dic
         if resp.status_code == 429:
             logger.warning(f"⚡ Rate limit atingido na tentativa {tentativa}")
             if tentativa < MAX_TENTATIVAS:
-                await asyncio.sleep(ESPERA_ENTRE_TENTATIVAS[tentativa - 1] + 10)
+                await asyncio.sleep(ESPERA_ENTRE_TENTATIVAS[tentativa - 1] + ESPERA_EXTRA_RATE_LIMIT)
                 continue
             raise RuntimeError("Muitos usuários usando a IA ao mesmo tempo. Aguarde 1-2 minutos e tente novamente.")
         elif resp.status_code == 529:
@@ -687,6 +814,16 @@ async def _chamar_ia_com_retry(prompt: str, job_id: Optional[str] = None) -> dic
         stop_reason = resp.json().get("stop_reason")
         texto = "".join(b.get("text", "") for b in resp.json().get("content", []))
         texto = texto.strip()
+        # Verificado antes do parse: uma resposta cortada que por acaso tenha
+        # chaves balanceadas passaria no json.loads incompleta.
+        if stop_reason == "max_tokens":
+            logger.error(
+                f"Resposta truncada na tentativa {tentativa}: stop_reason=max_tokens "
+                f"(tamanho={len(texto)} caracteres, max_tokens={MAX_TOKENS_PLANO}). Sem retry."
+            )
+            raise RespostaTruncada(
+                f"A resposta da IA foi cortada no limite de {MAX_TOKENS_PLANO} tokens de saída."
+            )
         texto = re.sub(r'```json\s*', '', texto)
         texto = re.sub(r'```\s*', '', texto)
         texto = texto.strip()
@@ -1103,7 +1240,14 @@ async def processar_resultado_ia_db(job_id: str, uid: str, usuario: dict, origem
     except Exception as e:
         erro_raw = str(e) or repr(e)
         # Monta mensagem amigável para o admin
-        if "tempo" in erro_raw.lower() or "timeout" in erro_raw.lower() or "demorou" in erro_raw.lower():
+        # Truncagem vem primeiro e pelo tipo, não pelo texto: a mensagem dela
+        # não pode cair por engano no ramo de formato inválido abaixo.
+        if isinstance(e, RespostaTruncada):
+            erro_admin = (
+                f" Resposta cortada pelo limite de tokens ({origem}). Não é instabilidade da API: "
+                "o plano não coube em max_tokens, e repetir gera o mesmo corte."
+            )
+        elif "tempo" in erro_raw.lower() or "timeout" in erro_raw.lower() or "demorou" in erro_raw.lower():
             erro_admin = f" Timeout — IA demorou demais ({origem}). Muitos usuários simultâneos."
         elif "rate limit" in erro_raw.lower() or "429" in erro_raw or "simultâneos" in erro_raw.lower():
             erro_admin = f" Rate limit — muitos usuários ao mesmo tempo ({origem}). Usuário pode refazer."
@@ -1121,6 +1265,160 @@ async def processar_resultado_ia_db(job_id: str, uid: str, usuario: dict, origem
             async with conn.cursor() as cur:
                 await cur.execute("UPDATE jobs SET status='erro', erro=%s WHERE id=%s", (erro_admin, job_id))
         logger.exception(f"❌ {origem} {job_id} falhou: {erro_raw}")
+
+# ── Recuperação de job travado ────────────────────────────────────────────────
+# Decisões registradas no ROADMAP em 01/11/2026. Resumo:
+# - tentativas = 0 quer dizer que o job nunca começou: está na fila do
+#   semáforo ou ficou órfão quando o processo caiu. Com o processo vivo,
+#   heartbeat velho com tentativas = 0 é fila, não trava.
+# - O job só é pego por UPDATE condicional. A condição que decide se ele está
+#   parado fica no WHERE do próprio UPDATE, e a tarefa só é disparada se o
+#   UPDATE afetou uma linha. Dois caminhos nunca pegam o mesmo job.
+# - O UPDATE zera tentativas: o job volta para a fila e, enquanto espera vaga,
+#   a varredura não toca nele. O histórico fica em recuperacoes, que só cresce.
+# - Job que chega a IA_MAX_RECUPERACOES é encerrado como erro (decisão de
+#   26/11/2026 no ROADMAP).
+
+# O asyncio guarda só referência fraca das tarefas criadas com create_task.
+# Sem guardar a referência aqui, uma tarefa de recuperação pode ser coletada
+# no meio da execução.
+_tarefas_recuperacao: set = set()
+
+async def _reenfileirar(job_id: str, uid: str, origem: str) -> bool:
+    """Dispara de novo a geração de um job já reivindicado pelo UPDATE condicional."""
+    async with db_pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute("SELECT id, nome FROM usuarios WHERE id=%s", (uid,))
+            usuario = await cur.fetchone()
+            if not usuario:
+                # Normalmente impossível: apagar o usuário apaga os jobs (ON DELETE CASCADE).
+                await cur.execute(
+                    "UPDATE jobs SET status='erro', erro=%s WHERE id=%s",
+                    (f" Usuário do job não encontrado ({origem}).", job_id),
+                )
+                logger.warning(f"Recuperação job={job_id}: usuário não encontrado, job marcado como erro")
+                return False
+    tarefa = asyncio.create_task(processar_resultado_ia_db(job_id, uid, usuario, origem))
+    _tarefas_recuperacao.add(tarefa)
+    tarefa.add_done_callback(_tarefas_recuperacao.discard)
+    return True
+
+async def _reenfileirar_ou_encerrar(job_id: str, uid: str, condicao: str, params: tuple, origem: str) -> str:
+    """Tenta pegar um job candidato. Devolve 'reenfileirado', 'encerrado' ou 'nada'.
+
+    condicao/params dizem o que é "parado" para quem chamou (inicialização ou
+    varredura). Os dois UPDATEs repetem essa condição no WHERE e se excluem
+    pelo teto:
+    - abaixo do teto, reenfileira: zera tentativas, soma 1 em recuperacoes e
+      renova o heartbeat;
+    - no teto, encerra como erro. Se ficasse em 'processando', a varredura
+      olharia para ele a cada rodada para sempre, e ninguém veria no painel.
+    Se nenhum dos dois afetou linha, outro caminho mexeu no job desde o
+    SELECT, e ele fica como está.
+    """
+    async with db_pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "UPDATE jobs SET tentativas = 0, recuperacoes = recuperacoes + 1, atualizado_em = NOW() "
+                f"WHERE id = %s AND {condicao} AND recuperacoes < %s",
+                (job_id, *params, IA_MAX_RECUPERACOES),
+            )
+            pegou = cur.rowcount == 1
+            if not pegou:
+                await cur.execute(
+                    "UPDATE jobs SET status = 'erro', erro = CONCAT("
+                    "' Job recuperado ', recuperacoes, ' vez(es) sem concluir (', %s, '). "
+                    "Não foi reenfileirado de novo, para não pagar outra geração. Procure no log as "
+                    "linhas Recuperação job=', id, ' para ver o que interrompe este job.') "
+                    f"WHERE id = %s AND {condicao} AND recuperacoes >= %s",
+                    (origem, job_id, *params, IA_MAX_RECUPERACOES),
+                )
+                if cur.rowcount == 1:
+                    logger.error(
+                        f"Recuperação job={job_id}: atingiu o teto de {IA_MAX_RECUPERACOES} recuperação(ões) "
+                        "sem concluir, encerrado como erro"
+                    )
+                    return "encerrado"
+                return "nada"
+    if await _reenfileirar(job_id, uid, origem):
+        return "reenfileirado"
+    return "nada"
+
+async def recuperar_jobs_orfaos() -> dict:
+    """Na inicialização: trata todo job em 'processando', qualquer que seja tentativas.
+
+    Os jobs só vivem em memória, então o que estava em 'processando' quando o
+    processo caiu ficou órfão. A condição "heartbeat anterior ao início deste
+    processo" pega exatamente esses e torna o reenfileiramento sempre
+    efetivo: o novo atualizado_em (NOW()) é sempre diferente do antigo, então
+    rowcount = 1 quer dizer que este processo pegou o job.
+
+    Um job que derruba o processo volta aqui a cada reinício. O teto de
+    recuperacoes (IA_MAX_RECUPERACOES) encerra esse ciclo.
+
+    LIMITAÇÃO: se outro processo ainda estiver vivo atendendo jobs, como na
+    sobreposição de instâncias durante um deploy, os jobs dele também são
+    pegos e a geração é paga duas vezes. Hoje há uma instância só; fica como
+    pendência da reconexão do deploy (ROADMAP, riscos conhecidos).
+    """
+    async with db_pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("SELECT NOW()")
+            (inicio,) = await cur.fetchone()
+    condicao = "status = 'processando' AND atualizado_em < %s"
+    candidatos = await _candidatos(condicao, (inicio,))
+    contagem = {"reenfileirado": 0, "encerrado": 0, "nada": 0}
+    for job_id, uid in candidatos:
+        r = await _reenfileirar_ou_encerrar(job_id, uid, condicao, (inicio,), "Recuperação (inicialização)")
+        contagem[r] += 1
+        if r == "reenfileirado":
+            logger.warning(f"Recuperação job={job_id}: órfão da execução anterior, reenfileirado")
+    logger.info(
+        f"Recuperação na inicialização: {contagem['reenfileirado']} job(s) órfão(s) reenfileirado(s), "
+        f"{contagem['encerrado']} encerrado(s) por atingir o teto"
+    )
+    return contagem
+
+async def recuperar_jobs_travados() -> dict:
+    """Com a aplicação rodando: trata só job que começou (tentativas > 0) e parou de dar sinal.
+
+    Job com tentativas = 0 está na fila do semáforo e não é tocado, por mais
+    velho que seja o heartbeat dele.
+    """
+    condicao = (
+        "status = 'processando' AND tentativas > 0 "
+        "AND atualizado_em < NOW() - INTERVAL %s SECOND"
+    )
+    params = (LIMITE_JOB_TRAVADO_S,)
+    contagem = {"reenfileirado": 0, "encerrado": 0, "nada": 0}
+    for job_id, uid in await _candidatos(condicao, params):
+        # A condição é conferida de novo nos UPDATEs: entre o SELECT e aqui o
+        # job pode ter concluído, dado heartbeat ou sido pego por outro caminho.
+        r = await _reenfileirar_ou_encerrar(job_id, uid, condicao, params, "Recuperação (job travado)")
+        contagem[r] += 1
+        if r == "reenfileirado":
+            logger.warning(
+                f"Recuperação job={job_id}: sem heartbeat há mais de {LIMITE_JOB_TRAVADO_S}s, reenfileirado"
+            )
+    return contagem
+
+async def _candidatos(condicao: str, params: tuple) -> list:
+    """Lista (id, usuario_id) dos jobs que atendem a condição. Só lista: quem decide é o UPDATE."""
+    async with db_pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(f"SELECT id, usuario_id FROM jobs WHERE {condicao}", params)
+            return list(await cur.fetchall())
+
+async def _varrer_jobs_periodicamente():
+    while True:
+        await asyncio.sleep(VARREDURA_JOBS_INTERVALO_S)
+        try:
+            await recuperar_jobs_travados()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            # Uma falha do banco numa rodada não pode matar a varredura.
+            logger.warning(f"Varredura de jobs travados falhou nesta rodada: {type(e).__name__}: {e}")
 
 # ── Resultado ──────────────────────────────────────────────────────────────────
 @app.get("/api/resultado/status")
@@ -1325,8 +1623,15 @@ async def jornada_prog(usuario: dict = Depends(get_usuario)):
 async def chamar_ia_lista(prompt: str) -> list:
     if not ANTHROPIC_API_KEY and not ia_simulada.config.ativa:
         raise RuntimeError("Chave de API não configurada no servidor.")
-    # Esta rota não passa pelo semáforo (pendência registrada no ROADMAP).
-    resp = await _enviar_para_ia(prompt, max_tokens=2000, timeout=60.0, tipo="lista")
+    # Semáforo próprio, separado do da geração do plano: com um só, a chamada
+    # curta esperaria atrás de gerações de ~100 s. Toda chamada à IA continua
+    # passando por um semáforo, e o teto total é a soma dos dois limites.
+    sem = _obter_ia_semaphore_lista()
+    t_inicio_espera = time.monotonic()
+    async with sem:
+        espera = time.monotonic() - t_inicio_espera
+        logger.info(f"IA lista evento=fila_entrada espera={espera:.1f}s")
+        resp = await _enviar_para_ia(prompt, max_tokens=2000, timeout=60.0, tipo="lista")
     if resp.status_code != 200:
         raise RuntimeError(f"Erro da IA: {resp.status_code}")
     texto = "".join(b.get("text", "") for b in resp.json().get("content", [])).strip()

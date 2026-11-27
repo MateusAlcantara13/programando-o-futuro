@@ -90,6 +90,11 @@ async def main():
     checa(all(r[3] == 0 for r in rs), "tentativas == 0 nas linhas antigas")
     checa((await nulidade(c, "atualizado_em"))[0] == "NO", "atualizado_em é NOT NULL")
     checa((await nulidade(c, "tentativas"))[0] == "NO", "tentativas é NOT NULL")
+    checa((await nulidade(c, "recuperacoes"))[0] == "NO", "recuperacoes é NOT NULL")
+    async with c.cursor() as cur:
+        await cur.execute("SELECT COUNT(*) FROM jobs WHERE recuperacoes <> 0")
+        (diferentes,) = await cur.fetchone()
+    checa(diferentes == 0, "recuperacoes == 0 nas linhas antigas")
 
     print("\n== Cenário A2: heartbeat real gravado, migração roda de novo ==")
     async with c.cursor() as cur:
