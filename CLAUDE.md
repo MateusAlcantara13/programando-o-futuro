@@ -112,10 +112,13 @@ Confiabilidade, previsto para a Fase 1:
 
 Qualidade da saída, previsto para a Fase 3:
 
-- A cidade do aluno existe na tabela `usuarios` mas nunca é passada para o prompt.
-- A data corrente também não é passada, então o modelo não ancora prazos no calendário de ENEM, SISU e ProUni.
+- **Resolvido em 26/11/2026 (PR #12).** A cidade vai para o prompt, vinda do perfil (`usuarios.cidade`) ou da pergunta 3 do teste inicial, com o perfil tendo precedência. O texto original estava incompleto: a pergunta 3 já pedia cidade e estado e chegava ao modelo, só que sem instrução. Texto original:
+  A cidade do aluno existe na tabela `usuarios` mas nunca é passada para o prompt.
+- **Resolvido em 26/11/2026 (PR #12).** A data de hoje vai para o prompt, por extenso e em ISO, no horário de Brasília, e fica gravada em `jobs.data_referencia`. Texto original:
+  A data corrente também não é passada, então o modelo não ancora prazos no calendário de ENEM, SISU e ProUni.
 - O schema pede três estruturas concorrentes para a mesma informação: `caminhos[].passos`, `proximosPassos` e `mapaCarreira`.
-- O campo `status` do `mapaCarreira` é gerado pela IA, que não tem como saber o que o aluno já fez.
+- **Resolvido em 26/11/2026 (PR #12).** O status é calculado no backend a partir do progresso salvo, e o que vier da IA é descartado. O schema passou a pedir `dataLimite` no lugar do `status`. Texto original:
+  O campo `status` do `mapaCarreira` é gerado pela IA, que não tem como saber o que o aluno já fez.
 - Nenhum passo tem critério de conclusão verificável e nenhum array tem cardinalidade definida.
 
 ## Equipe e áreas
