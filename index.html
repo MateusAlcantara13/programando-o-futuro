@@ -3,8 +3,8 @@
   <head>
     <script>(function() {
       try {
-        const token = localStorage.getItem('pf_token');
-        const user = JSON.parse(localStorage.getItem('pf_user') || 'null');
+        const token = sessionStorage.getItem('pf_token');
+        const user = JSON.parse(sessionStorage.getItem('pf_user') || 'null');
         if (token && user) {
           const destino = user.teste_inicial_concluido
             ? 'pages/inicial_mapa_feito.html'

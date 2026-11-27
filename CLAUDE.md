@@ -126,7 +126,7 @@ Mateus Alcantara, responsável técnico: camada de IA, prompt, schema, fila e ci
 Ricardo Ongari Rodrigues: autenticação, segurança, esquema e migrações de banco, rotas administrativas.
 Yago Dias dos Santos: páginas, JavaScript, estilos, painel administrativo no front, teste de carga, rubrica de qualidade.
 
-Orientador: professor Caio Silva.
+Orientador: professor André Luís.
 
 ## Fora de escopo neste semestre
 

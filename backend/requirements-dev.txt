@@ -1,0 +1,7 @@
+# Dependências só para os testes em backend/testes/. Não vão para produção.
+# Instalar com: pip install -r backend/requirements-dev.txt
+-r requirements.txt
+
+# Motor JavaScript usado para rodar js/mapa-progresso.js nos testes
+# teste_mapa_progresso_front.py e teste_mapa_progresso.py.
+quickjs==1.19.4

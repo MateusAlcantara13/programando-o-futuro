@@ -469,7 +469,7 @@
         const qParam = parseInt(params.get('q'));
         if (qParam && qParam >= 1 && qParam <= perguntas.length) currentQ = qParam;
 
-        const saved = localStorage.getItem(`pf_modulo_${MODULO_ID}`);
+        const saved = sessionStorage.getItem(`pf_modulo_${MODULO_ID}`);
         if (saved) respostas = JSON.parse(saved);
 
         function renderPergunta(going_back = false) {
@@ -497,7 +497,7 @@
 
         function selecionarOpcao(letra, el) {
             respostas[currentQ] = letra;
-            localStorage.setItem(`pf_modulo_${MODULO_ID}`, JSON.stringify(respostas));
+            sessionStorage.setItem(`pf_modulo_${MODULO_ID}`, JSON.stringify(respostas));
             document.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
             el.classList.add('selected');
             atualizarBtnProximo();
@@ -517,12 +517,12 @@
 
         function finalizarModulo() {
             /* TODO BACK-END: POST /api/modulos/02/finalizar → desbloqueia módulo 03 */
-            localStorage.setItem(`pf_modulo_${MODULO_ID}`, JSON.stringify(respostas));
+            sessionStorage.setItem(`pf_modulo_${MODULO_ID}`, JSON.stringify(respostas));
             window.location.href = 'historico.html?modulo_concluido=02';
         }
 
         function sair() {
-            localStorage.setItem(`pf_modulo_${MODULO_ID}`, JSON.stringify(respostas));
+            sessionStorage.setItem(`pf_modulo_${MODULO_ID}`, JSON.stringify(respostas));
             window.location.href = 'historico.html';
         }
 

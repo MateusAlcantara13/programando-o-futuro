@@ -73,7 +73,7 @@ async def conectar(db=None):
 async def criar_job(job_id, status, tentativas, idade_heartbeat_s, recuperacoes=0):
     c = await conectar(BANCO)
     async with c.cursor() as cur:
-        await cur.execute("INSERT INTO usuarios (id, nome, email, senha) VALUES (%s,%s,%s,'x')",
+        await cur.execute("INSERT INTO usuarios (id, nome, email, senha, aceite_lgpd) VALUES (%s,%s,%s,'x',FALSE)",
                           (f"u-{job_id}", job_id, f"{job_id}@teste.local"))
         await cur.execute(
             "INSERT INTO jobs (id, usuario_id, status, tentativas, recuperacoes, criado_em, atualizado_em) "

@@ -27,12 +27,12 @@
   }
 
   function salvarLocal() {
-    localStorage.setItem(storageKey, JSON.stringify(respostas));
+    sessionStorage.setItem(storageKey, JSON.stringify(respostas));
   }
 
   function carregarLocal() {
     try {
-      respostas = JSON.parse(localStorage.getItem(storageKey) || '{}');
+      respostas = JSON.parse(sessionStorage.getItem(storageKey) || '{}');
     } catch (_) {
       respostas = {};
     }
@@ -255,15 +255,15 @@
           textoLivre: respostaDaPergunta(q).textoLivre || ''
         }));
         const data = await testeApi.finalizar(payload);
-        localStorage.setItem('pf_job_id', data.jobId);
-        localStorage.removeItem(storageKey);
+        sessionStorage.setItem('pf_job_id', data.jobId);
+        sessionStorage.removeItem(storageKey);
         window.location.href = 'resultado.html';
         return;
       }
 
       const data = await modulosApi.finalizar(moduloId);
-      localStorage.removeItem(storageKey);
-      if (data.jobId) localStorage.setItem('pf_job_id', data.jobId);
+      sessionStorage.removeItem(storageKey);
+      if (data.jobId) sessionStorage.setItem('pf_job_id', data.jobId);
       window.location.href = data.jobId ? 'resultado.html' : 'historico.html';
     } catch (error) {
       mostrarErro(error?.detail?.erro || error?.erro || error?.detail || 'Não foi possível enviar suas respostas.');

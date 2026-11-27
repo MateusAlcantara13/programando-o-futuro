@@ -469,7 +469,7 @@
     const params = new URLSearchParams(window.location.search);
     const qParam = parseInt(params.get('q'));
     if (qParam && qParam >= 1 && qParam <= perguntas.length) currentQ = qParam;
-    const saved = localStorage.getItem(`pf_modulo_${MODULO_ID}`);
+    const saved = sessionStorage.getItem(`pf_modulo_${MODULO_ID}`);
     if (saved) respostas = JSON.parse(saved);
 
     function renderPergunta(going_back = false) {
@@ -497,7 +497,7 @@
 
     function selecionarOpcao(letra, el) {
       respostas[currentQ] = letra;
-      localStorage.setItem(`pf_modulo_${MODULO_ID}`, JSON.stringify(respostas));
+      sessionStorage.setItem(`pf_modulo_${MODULO_ID}`, JSON.stringify(respostas));
       document.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
       el.classList.add('selected');
       atualizarBtnProximo();
@@ -524,12 +524,12 @@
         → IA gera: área de atuação, cursos, faculdades recomendadas
         → redireciona para resultado.html (tela de loading → inicial_mapa_feito.html)
       */
-      localStorage.setItem(`pf_modulo_${MODULO_ID}`, JSON.stringify(respostas));
+      sessionStorage.setItem(`pf_modulo_${MODULO_ID}`, JSON.stringify(respostas));
       window.location.href = 'historico.html';
 
     }
 
-    function sair() { localStorage.setItem(`pf_modulo_${MODULO_ID}`, JSON.stringify(respostas)); window.location.href = 'historico.html'; }
+    function sair() { sessionStorage.setItem(`pf_modulo_${MODULO_ID}`, JSON.stringify(respostas)); window.location.href = 'historico.html'; }
     renderPergunta();
   </script>
   <script src="../js/api.js"></script>

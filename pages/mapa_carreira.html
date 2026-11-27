@@ -286,6 +286,7 @@
   </div>
 
   <script src="../js/api.js"></script>
+  <script src="../js/mapa-progresso.js"></script>
   <script>const paginaProtegida = protegerPagina({ precisaMapaFeito: true });</script>
   <script src="../js/sidebar.js"></script>
   <script src="../js/footer.js"></script>
@@ -296,43 +297,61 @@
     });
 
     let perfilMapa = null, stepsMapa = [], selectedStepKey = null;
-    const DONE_KEY = 'pf_mapa_done', CHECKS_KEY = 'pf_mapa_checks';
-    let etapasConcluidas = {};
-    let checksFeitos = {};
+    // Progresso: o servidor é a fonte da verdade, o sessionStorage é cache.
+    // Regras e motivo em js/mapa-progresso.js.
+    const progressoMapa = criarProgressoMapa({
+      armazenamento: sessionStorage,
+      // apiFetch (js/api.js): endereço relativo e sessão expirada tratada.
+      buscar: () => apiFetch('/api/mapa/progresso'),
+      enviar: (dados) => api.post('/api/mapa/progresso', dados),
+      aoAvisar: mostrarAvisoProgresso,
+    });
+    // Mesmos objetos do módulo: o resto da página só altera o conteúdo deles.
+    const etapasConcluidas = progressoMapa.estado.etapasConcluidas;
+    const checksFeitos = progressoMapa.estado.checksFeitos;
 
-    async function carregarProgresso() {
-      try {
-        const token = localStorage.getItem('pf_token');
-        const res = await fetch(`${window.API_URL || 'https://programando-o-futuro.onrender.com'}/api/mapa/progresso`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          etapasConcluidas = data.etapasConcluidas || {};
-          checksFeitos = data.checksFeitos || {};
-          localStorage.setItem(DONE_KEY, JSON.stringify(etapasConcluidas));
-          salvarProgresso();
-        }
-      } catch(e) {
-        etapasConcluidas = JSON.parse(localStorage.getItem(DONE_KEY) || '{}');
-        checksFeitos = JSON.parse(localStorage.getItem(CHECKS_KEY) || '{}');
-      }
+    function salvarProgresso() {
+      return progressoMapa.salvar();
     }
 
-    async function salvarProgresso() {
-      localStorage.setItem(DONE_KEY, JSON.stringify(etapasConcluidas));
-      localStorage.setItem(CHECKS_KEY, JSON.stringify(checksFeitos));
-      try {
-        const token = localStorage.getItem('pf_token');
-        await fetch(`${window.API_URL || 'https://programando-o-futuro.onrender.com'}/api/mapa/progresso`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ etapasConcluidas, checksFeitos })
-        });
-      } catch(e) {}
+    // Aviso fixo na tela. Fica até o envio seguinte dar certo: a marcação
+    // que não foi salva some ao fechar o navegador, e o aluno precisa saber.
+    function mostrarAvisoProgresso(tipo) {
+      let aviso = document.getElementById('avisoProgresso');
+      if (!tipo) { if (aviso) aviso.hidden = true; return; }
+      if (!aviso) {
+        aviso = document.createElement('div');
+        aviso.id = 'avisoProgresso';
+        aviso.setAttribute('role', 'alert');
+        aviso.style.cssText = [
+          'position:fixed', 'left:50%', 'transform:translateX(-50%)', 'top:16px', 'z-index:9999',
+          'max-width:min(560px, calc(100% - 32px))', 'padding:0.8rem 1rem', 'border-radius:12px',
+          'background:#3b0d0d', 'border:1px solid rgba(248,113,113,0.6)', 'color:#fecaca',
+          'font:500 0.85rem sans-serif', 'display:flex', 'gap:0.8rem', 'align-items:center',
+        ].join(';');
+        const texto = document.createElement('span');
+        texto.id = 'avisoProgressoTexto';
+        const botao = document.createElement('button');
+        botao.id = 'avisoProgressoBotao';
+        botao.type = 'button';
+        botao.textContent = 'Tentar de novo';
+        botao.style.cssText = 'flex-shrink:0;padding:0.4rem 0.8rem;border-radius:8px;cursor:pointer;border:1px solid #fca5a5;background:transparent;color:#fecaca';
+        aviso.append(texto, botao);
+        document.body.appendChild(aviso);
+      }
+      document.getElementById('avisoProgressoTexto').textContent = tipo === 'salvar'
+        ? 'Sua última marcação NÃO foi salva no servidor. Ela aparece aqui, mas some quando o navegador fechar.'
+        : 'Não foi possível buscar seu progresso no servidor. O que aparece pode estar desatualizado.';
+      document.getElementById('avisoProgressoBotao').onclick = tipo === 'salvar'
+        ? () => progressoMapa.salvar()
+        : () => progressoMapa.carregar(atualizarTelaProgresso);
+      aviso.hidden = false;
+    }
+
+    function atualizarTelaProgresso() {
+      if (!stepsMapa.length) return;
+      renderTimeline();
+      if (selectedStepKey) selectStep(selectedStepKey);
     }
 
     const fn = n => String(n||'').trim().split(/\s+/)[0]||'aluno';
@@ -498,7 +517,8 @@
       document.getElementById('mapTitle').textContent = perfilMapa.areaPrincipal||'Mapa de Carreira';
       const compatEl = document.getElementById('mapCompatPct');
       if (compatEl) compatEl.textContent = pct(perfilMapa.percentualCompatibilidade) + '% compatível';
-      await carregarProgresso();
+      // O cache aparece primeiro; quando o servidor responde, a tela é refeita com o que veio dele.
+      await progressoMapa.carregar(atualizarTelaProgresso);
       renderTimeline();
       const ai = stepsMapa.findIndex(s=>s.status==='active');
       selectStep(sk(stepsMapa[ai>=0?ai:0], ai>=0?ai:0));

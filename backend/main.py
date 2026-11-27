@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, StrictBool
 from typing import Optional
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
@@ -14,6 +14,7 @@ from migracoes.jobs_heartbeat import migrar_jobs_heartbeat, verificar_jobs_heart
 from migracoes.mapa_progresso_usuario_id import (
     migrar_mapa_progresso_usuario_id, verificar_mapa_progresso_usuario_id,
 )
+from migracoes.usuarios_aceite_lgpd import migrar_usuarios_aceite_lgpd, verificar_usuarios_aceite_lgpd
 import ia_simulada
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -46,6 +47,39 @@ if AMBIENTE not in AMBIENTES_VALIDOS:
     raise RuntimeError(
         f"AMBIENTE='{AMBIENTE}' inválido. Use um de: {', '.join(AMBIENTES_VALIDOS)}."
     )
+
+
+# Origens que o navegador pode usar para chamar a API (CORS). O próprio
+# backend serve o front, então as páginas do sistema são da mesma origem e
+# não dependem desta lista: ela só decide quais OUTROS sites podem chamar a
+# API a partir do navegador. Nunca "*".
+CORS_ORIGENS_PADRAO_LOCAL = ("http://localhost:8000", "http://127.0.0.1:8000")
+
+def carregar_cors_origens(ambiente: str, bruto: Optional[str]) -> list:
+    """Lê CORS_ORIGENS (separada por vírgula). Valor inválido impede a aplicação de iniciar.
+
+    Em produção a variável é obrigatória: é melhor falhar no deploy do que
+    servir liberado. Em local, sem a variável, vale o localhost do uvicorn.
+    """
+    # Só vírgulas e espaços (" , ") conta como ausente: uma lista vazia em
+    # produção deixaria a aplicação subir sem nenhuma origem configurada.
+    if bruto is None or not [o for o in bruto.split(",") if o.strip()]:
+        if ambiente == "producao":
+            raise RuntimeError(
+                "CORS_ORIGENS não definida com AMBIENTE=producao. Defina a lista de origens "
+                "permitidas, separadas por vírgula, por exemplo https://exemplo.com.br"
+            )
+        return list(CORS_ORIGENS_PADRAO_LOCAL)
+    origens = [o.strip() for o in bruto.split(",") if o.strip()]
+    for o in origens:
+        if o == "*" or not re.fullmatch(r"https?://[^/\s*]+", o):
+            raise RuntimeError(
+                f"CORS_ORIGENS contém '{o}', que não é uma origem válida. Use esquema e host, "
+                "sem barra no final e sem '*', por exemplo https://exemplo.com.br"
+            )
+    return origens
+
+CORS_ORIGENS = carregar_cors_origens(AMBIENTE, os.getenv("CORS_ORIGENS"))
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL   = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
 # Sem valor padrão: quem conhece o segredo assina token de qualquer usuário.
@@ -151,12 +185,28 @@ else:
     logger.error("❌ ANTHROPIC_API_KEY não encontrada!")
 
 app = FastAPI(title="Programando o Futuro API", version="2.0.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGENS, allow_methods=["*"], allow_headers=["*"])
 @app.on_event("startup")
 async def startup():
     if ia_simulada.config.ativa:
         logger.warning(ia_simulada.aviso_startup())
     await init_db()
+    logger.info(f"🌐 Origens permitidas (CORS): {', '.join(CORS_ORIGENS)}")
+    try:
+        async with db_pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                n_texto_plano = await contar_senhas_texto_plano(cur)
+        if n_texto_plano > 0:
+            logger.warning(
+                f"⚠️ {n_texto_plano} usuário(s) ainda com senha em TEXTO PLANO no banco. Cada um vira "
+                "hash no próximo login. O caminho de texto plano em verificar_senha só pode ser "
+                "apagado quando este número chegar a zero."
+            )
+        else:
+            logger.info("🔐 Senhas: nenhum usuário com senha em texto plano")
+    except Exception as e:
+        # Medição, não trava: não impede a aplicação de subir.
+        logger.error(f"Contagem de senhas em texto plano falhou: {type(e).__name__}: {e}")
     _obter_ia_semaphore()
     _obter_ia_semaphore_lista()
     logger.info(
@@ -265,6 +315,8 @@ async def init_db():
         await verificar_jobs_heartbeat(conn)
         await migrar_mapa_progresso_usuario_id(conn)
         await verificar_mapa_progresso_usuario_id(conn)
+        await migrar_usuarios_aceite_lgpd(conn)
+        await verificar_usuarios_aceite_lgpd(conn)
     logger.info("✅ Banco de dados conectado!")
 
 async def criar_tabelas():
@@ -275,7 +327,9 @@ async def criar_tabelas():
             email VARCHAR(120) NOT NULL UNIQUE,
             senha VARCHAR(255) NOT NULL,
             avatar_iniciais VARCHAR(10),
-            aceite_lgpd BOOLEAN DEFAULT TRUE,
+            aceite_lgpd BOOLEAN NOT NULL,
+            aceite_lgpd_em DATETIME NULL,
+            aceite_lgpd_versao VARCHAR(20) NULL,
             aceite_menor BOOLEAN DEFAULT FALSE,
             teste_inicial_concluido BOOLEAN DEFAULT FALSE,
             modulos_concluidos JSON DEFAULT ('[]'),
@@ -345,8 +399,15 @@ class CadastroBody(BaseModel):
     nome: str
     email: str
     senha: str
-    aceite_lgpd: bool
-    aceite_menor: bool
+    # Opcional no modelo de propósito: ausente vira None e recebe a mesma
+    # recusa clara do cadastro, em vez do 422 genérico do Pydantic. StrictBool
+    # aceita só true/false de JSON; "true" em texto ou 1 não valem como aceite.
+    aceite_lgpd: Optional[StrictBool] = None
+    versao_termo_lgpd: Optional[str] = None
+    # Ignorado. Nenhuma tela coleta o consentimento dos responsáveis
+    # (pendência da fase da rede pública), então nenhum valor que chegue aqui
+    # significa algo. O cadastro grava NULL, que quer dizer "não coletado".
+    aceite_menor: Optional[bool] = None
 
 class LoginBody(BaseModel):
     email: str
@@ -917,6 +978,9 @@ async def admin_dados(senha: str):
             total_respostas = (await cur.fetchone())["total"]
             await cur.execute("SELECT COUNT(*) as total FROM jobs WHERE status='concluido'")
             total_jobs = (await cur.fetchone())["total"]
+            # Cursor comum: contar_senhas_texto_plano lê a contagem por posição.
+            async with conn.cursor() as cur_simples:
+                senhas_texto_plano = await contar_senhas_texto_plano(cur_simples)
             await cur.execute("SELECT id, nome, email, teste_inicial_concluido, modulos_concluidos, criado_em FROM usuarios ORDER BY criado_em DESC")
             usuarios = await cur.fetchall()
             await cur.execute("SELECT j.id, j.usuario_id, j.status, j.erro, j.criado_em, u.nome FROM jobs j LEFT JOIN usuarios u ON j.usuario_id=u.id ORDER BY j.criado_em DESC LIMIT 50")
@@ -933,7 +997,8 @@ async def admin_dados(senha: str):
                 if p["criado_em"]: p["criado_em"] = p["criado_em"].isoformat()
                 if p["atualizado_em"]: p["atualizado_em"] = p["atualizado_em"].isoformat()
     return {
-        "metricas": {"usuarios": total_usuarios, "perfis": total_perfis, "respostas": total_respostas, "jobs_concluidos": total_jobs},
+        "metricas": {"usuarios": total_usuarios, "perfis": total_perfis, "respostas": total_respostas,
+                     "jobs_concluidos": total_jobs, "senhas_texto_plano": senhas_texto_plano},
         "usuarios": usuarios, "jobs": jobs, "perfis": perfis
     }
 
@@ -994,8 +1059,28 @@ def serve_page(page: str):
     return FileResponse(path)
 
 # ── Senhas ─────────────────────────────────────────────────────────────────────
+# Formato completo de um hash bcrypt: $2a$, $2b$ ou $2y$, custo com dois
+# dígitos, e 53 caracteres de sal e hash, 60 no total. Olhar só o prefixo
+# confundiria uma senha em texto plano que começasse com "$2b$" com um hash.
+# O mesmo padrão é usado em Python e no SQL de contar_senhas_texto_plano,
+# para as duas contas nunca divergirem.
+PADRAO_HASH_BCRYPT = r"^\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}$"
+
 def eh_hash_bcrypt(valor: str) -> bool:
-    return valor.startswith(("$2a$", "$2b$", "$2y$"))
+    return re.fullmatch(PADRAO_HASH_BCRYPT, valor or "") is not None
+
+async def contar_senhas_texto_plano(cur) -> int:
+    """Quantos usuários ainda têm senha gravada sem hash, pelo formato do campo.
+
+    REGEXP_LIKE com 'c' diferencia maiúsculas de minúsculas. Sem isso, com a
+    collation padrão, o MySQL aceitaria '$2A$' e a conta divergiria do Python.
+    """
+    await cur.execute(
+        "SELECT COUNT(*) FROM usuarios WHERE NOT REGEXP_LIKE(senha, %s, 'c')",
+        (PADRAO_HASH_BCRYPT,),
+    )
+    (total,) = await cur.fetchone()
+    return int(total)
 
 async def gerar_hash_senha(senha: str) -> str:
     # bcrypt é CPU-bound; roda em thread para não travar o event loop
@@ -1005,15 +1090,67 @@ async def gerar_hash_senha(senha: str) -> str:
 async def verificar_senha(senha: str, armazenada: str) -> bool:
     if eh_hash_bcrypt(armazenada):
         return await asyncio.to_thread(bcrypt.checkpw, senha.encode("utf-8"), armazenada.encode("utf-8"))
-    # TEMPORÁRIO (Fase 0): contas antigas com senha em texto plano.
-    # Remover quando nenhuma conta tiver senha sem hash. Ver issue de remoção.
+    # TEMPORÁRIO (Fase 0): contas antigas com senha em texto plano. O login
+    # converte a senha em hash no primeiro acesso que acertar.
+    # CONDIÇÃO PARA APAGAR ESTE TRECHO: a contagem de senhas em texto plano
+    # chegar a zero. Onde olhar: linha "senha em TEXTO PLANO" no log do
+    # startup, ou a métrica "Senhas sem hash" no painel admin
+    # (/api/admin/dados, metricas.senhas_texto_plano). Apagar antes disso
+    # tranca o aluno fora da conta. Junto com este trecho, apagar também a
+    # conversão em hash dentro de login().
     return hmac.compare_digest(senha.encode("utf-8"), armazenada.encode("utf-8"))
+
+
+# ── Termo da LGPD ─────────────────────────────────────────────────────────────
+# Fonte única do texto que o aluno aceita no cadastro. O front busca daqui
+# (GET /api/lgpd/termo), mostra, e devolve a versão no cadastro. O banco grava
+# a versão aceita. Qualquer mudança no texto exige uma versão nova: assim
+# sempre dá para saber o que cada pessoa leu.
+# RASCUNHO: revisar o texto com o orientador antes de usar com alunos.
+TERMO_LGPD_VERSAO = "2026-11-26"
+TERMO_LGPD_PARAGRAFOS = (
+    "Para criar sua conta, o Programando o Futuro guarda o seu nome, o seu e-mail, a sua senha "
+    "(guardada de forma protegida, que ninguém consegue ler), a sua cidade, se você informar, e as "
+    "respostas que você der no questionário e nos módulos.",
+    "Esses dados são usados só para montar o seu plano de carreira e mostrar o seu progresso. Para "
+    "gerar o plano, as suas respostas são enviadas ao Claude, um serviço de inteligência artificial "
+    "da empresa Anthropic, que fica fora do Brasil.",
+    "A equipe do projeto, do Centro Universitário SENAI-SP, pode ver as suas respostas para "
+    "acompanhar e melhorar o sistema. Os seus dados não são vendidos nem usados para propaganda.",
+    "Você pode pedir a qualquer momento para ver, corrigir ou apagar os seus dados, falando com a "
+    "equipe do projeto na sua escola.",
+)
+TERMO_LGPD_CONFIRMACAO = "Li e aceito que meus dados sejam usados como descrito acima."
+
+@app.get("/api/lgpd/termo")
+async def termo_lgpd():
+    return {
+        "versao": TERMO_LGPD_VERSAO,
+        "paragrafos": list(TERMO_LGPD_PARAGRAFOS),
+        "confirmacao": TERMO_LGPD_CONFIRMACAO,
+    }
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
 @app.post("/api/auth/cadastro", status_code=201)
 async def cadastro(body: CadastroBody):
-    if not body.aceite_lgpd:
-        raise HTTPException(status_code=400, detail={"erro": "Aceite da LGPD é obrigatório", "codigo": "LGPD_REQUIRED"})
+    # O front também bloqueia, mas quem garante é o backend.
+    # Dois erros diferentes: ausente costuma ser defeito de quem chama a API;
+    # false é a pessoa que não aceitou.
+    if body.aceite_lgpd is None:
+        raise HTTPException(status_code=400, detail={
+            "erro": "O aceite do termo de uso dos dados (LGPD) é obrigatório e não veio no pedido de cadastro.",
+            "codigo": "LGPD_AUSENTE",
+        })
+    if body.aceite_lgpd is not True:
+        raise HTTPException(status_code=400, detail={
+            "erro": "Para criar a conta, é preciso ler e aceitar o termo de uso dos dados (LGPD).",
+            "codigo": "LGPD_RECUSADO",
+        })
+    if body.versao_termo_lgpd != TERMO_LGPD_VERSAO:
+        raise HTTPException(status_code=400, detail={
+            "erro": "O termo de uso dos dados mudou desde que a página foi aberta. Recarregue a página, leia o termo e aceite de novo.",
+            "codigo": "LGPD_VERSAO_INVALIDA",
+        })
     async with db_pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
             await cur.execute("SELECT id FROM usuarios WHERE email = %s", (body.email,))
@@ -1022,13 +1159,16 @@ async def cadastro(body: CadastroBody):
             uid = str(uuid.uuid4())
             iniciais = "".join(p[0].upper() for p in body.nome.split()[:2])
             await cur.execute(
-                "INSERT INTO usuarios (id, nome, email, senha, avatar_iniciais, aceite_lgpd, aceite_menor) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                (uid, body.nome, body.email, await gerar_hash_senha(body.senha), iniciais, body.aceite_lgpd, body.aceite_menor)
+                "INSERT INTO usuarios (id, nome, email, senha, avatar_iniciais, aceite_lgpd, aceite_lgpd_em, "
+                "aceite_lgpd_versao, aceite_menor) VALUES (%s,%s,%s,%s,%s,TRUE,UTC_TIMESTAMP(),%s,NULL)",
+                (uid, body.nome, body.email, await gerar_hash_senha(body.senha), iniciais,
+                 TERMO_LGPD_VERSAO)
             )
             usuario = {
                 "id": uid, "nome": body.nome, "email": body.email,
-                "avatar_iniciais": iniciais, "aceite_lgpd": body.aceite_lgpd,
-                "aceite_menor": body.aceite_menor, "teste_inicial_concluido": False,
+                "avatar_iniciais": iniciais, "aceite_lgpd": True,
+                "aceite_lgpd_versao": TERMO_LGPD_VERSAO,
+                "aceite_menor": None, "teste_inicial_concluido": False,
                 "modulos_concluidos": [], "criado_em": datetime.utcnow().isoformat()
             }
             # O id identifica o cadastro no log sem expor dado pessoal do aluno.
@@ -1043,7 +1183,9 @@ async def login(body: LoginBody):
             u = await cur.fetchone()
             if not u or not await verificar_senha(body.senha, u["senha"]):
                 raise HTTPException(status_code=401, detail={"erro": "Credenciais inválidas", "codigo": "CREDENCIAIS_INVALIDAS"})
-            # TEMPORÁRIO (Fase 0): converte senha legada em hash no primeiro login bem-sucedido
+            # TEMPORÁRIO (Fase 0): converte senha legada em hash no primeiro login bem-sucedido.
+            # CONDIÇÃO PARA APAGAR: a contagem de senhas em texto plano chegar a zero
+            # (log do startup ou métrica "Senhas sem hash" no painel admin). Ver verificar_senha.
             if not eh_hash_bcrypt(u["senha"]):
                 await cur.execute("UPDATE usuarios SET senha = %s WHERE id = %s", (await gerar_hash_senha(body.senha), u["id"]))
                 logger.info("🔐 Senha migrada para bcrypt")
@@ -1065,6 +1207,9 @@ async def atualizar_perfil(body: dict, usuario: dict = Depends(get_usuario)):
             updates.append(f"{campo}=%s")
             values.append(str(body[campo]).strip())
     if "senha_nova" in body and body["senha_nova"]:
+        # verificar_senha ainda aceita senha atual em texto plano (conta antiga).
+        # CONDIÇÃO PARA APAGAR esse caminho: a contagem de senhas em texto plano
+        # chegar a zero (log do startup ou métrica "Senhas sem hash" no painel admin).
         if not body.get("senha_atual") or not await verificar_senha(str(body["senha_atual"]), usuario["senha"]):
             raise HTTPException(status_code=400, detail={"erro": "Senha atual incorreta"})
         updates.append("senha=%s")

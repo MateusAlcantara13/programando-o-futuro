@@ -412,6 +412,10 @@
       });
     });
 
+    // Motivo de ter caído aqui (sessão expirada), gravado por encerrarSessao em js/api.js.
+    const avisoLogin = lerAvisoLogin();
+    if (avisoLogin) showErro(avisoLogin);
+
     redirecionarUsuarioLogado({ silencioso: true });
   </script>
 </body>

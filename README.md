@@ -113,7 +113,7 @@ Atuei de ponta a ponta: modelagem do banco, backend em FastAPI, construção e a
 - [Ricardo Ongari Rodrigues](https://github.com/RicardoOngari)
 - [Lucas Gomes](https://github.com/lucasgsilva102-oss)
 
-Orientação: professor Caio Silva.
+Orientação: professor André Luís.
 
 > Repositório original do grupo: https://github.com/vic-cavalcant3/Programando-o-Futuro
 > Esta cópia foi criada para dar continuidade ao projeto e implementar novas funcionalidades.

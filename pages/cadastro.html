@@ -258,6 +258,18 @@
       .form-row { grid-template-columns: 1fr; }
       .deco-x, .deco-square { display: none; }
     }
+    /* Termo da LGPD: texto visível na própria tela, sem link para outra página. */
+    .termo-lgpd { margin: 0.5rem 0 1.2rem; padding: 1rem 1.1rem; border-radius: 12px;
+      background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); }
+    .termo-lgpd-titulo { font-size: 0.9rem; font-weight: 700; margin-bottom: 0.5rem; }
+    .termo-lgpd-texto { font-size: 0.8rem; line-height: 1.5; opacity: 0.85;
+      max-height: 11rem; overflow-y: auto; padding-right: 0.3rem; }
+    .termo-lgpd-texto p { margin: 0 0 0.6rem; }
+    .termo-lgpd-aceite { display: flex; gap: 0.6rem; align-items: flex-start; margin-top: 0.8rem;
+      font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+    .termo-lgpd-aceite input { margin-top: 0.2rem; width: 1.05rem; height: 1.05rem; flex-shrink: 0; cursor: pointer; }
+    .termo-lgpd-motivo { margin-top: 0.6rem; font-size: 0.78rem; color: #fca5a5; }
+    .btn-submit:disabled { cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -351,7 +363,18 @@
         </div>
       </div>
 
-      <button class="btn-submit font-jakarta" id="btnCadastro" type="button">
+      <div class="termo-lgpd" id="termoLgpd">
+        <div class="termo-lgpd-titulo font-jakarta">Como seus dados são usados</div>
+        <div class="termo-lgpd-texto font-manrope" id="termoLgpdTexto">Carregando o termo...</div>
+        <!-- Sem "checked": o aluno precisa marcar. Desabilitada até o termo carregar. -->
+        <label class="termo-lgpd-aceite font-manrope">
+          <input type="checkbox" id="aceiteLgpd" disabled />
+          <span id="termoLgpdConfirmacao">Li e aceito que meus dados sejam usados como descrito acima.</span>
+        </label>
+        <div class="termo-lgpd-motivo font-manrope" id="termoLgpdMotivo" aria-live="polite"></div>
+      </div>
+
+      <button class="btn-submit font-jakarta" id="btnCadastro" type="button" disabled style="opacity:0.5">
         Criar Conta
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
           <path d="M5 12h14M12 5l7 7-7 7"/>
@@ -374,6 +397,51 @@
     const confirmarSenhaInput = document.getElementById('confirmarSenha');
     const btnCadastro = document.getElementById('btnCadastro');
     const textoBotaoCadastro = btnCadastro.innerHTML;
+    const aceiteLgpdInput = document.getElementById('aceiteLgpd');
+    const termoLgpdTexto = document.getElementById('termoLgpdTexto');
+    const termoLgpdConfirmacao = document.getElementById('termoLgpdConfirmacao');
+    const termoLgpdMotivo = document.getElementById('termoLgpdMotivo');
+    // Versão do termo que esta tela mostrou. Vai junto no cadastro, e o
+    // backend recusa se não for a versão atual.
+    let versaoTermoLgpd = null;
+
+    // O botão só habilita com o termo carregado e a caixa marcada.
+    function atualizarBotaoCadastro() {
+      const pode = versaoTermoLgpd !== null && aceiteLgpdInput.checked;
+      btnCadastro.disabled = !pode;
+      btnCadastro.style.opacity = pode ? '1' : '0.5';
+      if (pode) {
+        termoLgpdMotivo.textContent = '';
+      } else if (versaoTermoLgpd === null) {
+        termoLgpdMotivo.textContent = 'Para criar a conta, o termo de uso dos dados precisa carregar e ser aceito.';
+      } else {
+        termoLgpdMotivo.textContent = 'Para criar a conta, leia o termo e marque a caixa acima.';
+      }
+    }
+
+    async function carregarTermoLgpd() {
+      versaoTermoLgpd = null;
+      aceiteLgpdInput.checked = false;
+      aceiteLgpdInput.disabled = true;
+      try {
+        const termo = await api.get('/api/lgpd/termo');
+        // textContent, nunca innerHTML: o texto é mostrado como veio.
+        termoLgpdTexto.replaceChildren(...termo.paragrafos.map((texto) => {
+          const p = document.createElement('p');
+          p.textContent = texto;
+          return p;
+        }));
+        termoLgpdConfirmacao.textContent = termo.confirmacao;
+        versaoTermoLgpd = termo.versao;
+        aceiteLgpdInput.disabled = false;
+      } catch (error) {
+        termoLgpdTexto.textContent = 'Não foi possível carregar o termo de uso dos dados. Recarregue a página para tentar de novo.';
+      }
+      atualizarBotaoCadastro();
+    }
+
+    aceiteLgpdInput.addEventListener('change', atualizarBotaoCadastro);
+    carregarTermoLgpd();
 
     function mensagemErroApi(error, fallback) {
       return error?.detail?.erro || error?.erro || error?.detail || fallback;
@@ -402,15 +470,24 @@
         return;
       }
 
+      // O Enter nos campos chama esta função mesmo com o botão desabilitado.
+      if (!aceiteLgpdInput.checked || versaoTermoLgpd === null) {
+        showErro('Para criar a conta, leia o termo de uso dos dados e marque a caixa de aceite.');
+        return;
+      }
+
       setLoading(btnCadastro, true, textoBotaoCadastro);
 
       try {
-        await authApi.cadastro(nome, email, senha);
+        await authApi.cadastro(nome, email, senha, aceiteLgpdInput.checked, versaoTermoLgpd);
         await redirecionarUsuarioLogado();
       } catch (error) {
         showErro(mensagemErroApi(error, 'Não foi possível criar sua conta. Tente novamente.'));
+        // Termo mudou no servidor: mostra o texto novo e pede o aceite de novo.
+        if (error?.detail?.codigo === 'LGPD_VERSAO_INVALIDA') await carregarTermoLgpd();
       } finally {
         setLoading(btnCadastro, false, textoBotaoCadastro);
+        atualizarBotaoCadastro();
       }
     }
 

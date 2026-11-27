@@ -1,6 +1,9 @@
-import asyncio, httpx
+import asyncio, httpx, os
 
-URL = "https://programando-o-futuro.onrender.com"
+# Endereço do backend a testar. Padrão: o backend local. Para outro
+# endereço, defina PF_URL_CARGA antes de rodar. Nenhum endereço de
+# produção fica escrito aqui.
+URL = os.getenv("PF_URL_CARGA", "http://127.0.0.1:8000").rstrip("/")
 
 # Simula um usuário completo: cadastra, responde tudo e finaliza (chama a IA)
 async def simular_usuario(i):
@@ -11,8 +14,10 @@ async def simular_usuario(i):
             "nome": f"Teste Carga {i}",
             "email": f"carga{i}_{int(asyncio.get_event_loop().time())}@teste.com",
             "senha": "123456",
+            # Usuário de teste de carga: aceita a versão atual do termo,
+            # que o cadastro exige desde 26/11/2026.
             "aceite_lgpd": True,
-            "aceite_menor": False
+            "versao_termo_lgpd": VERSAO_TERMO,
         })
         if r.status_code != 201:
             print(f"❌ Usuário {i} — erro no cadastro: {r.status_code} {r.text[:100]}")
@@ -58,7 +63,12 @@ async def simular_usuario(i):
 
         print(f"⏱️ Usuário {i} — timeout aguardando resultado da IA")
 
+VERSAO_TERMO = None
+
 async def main():
+    global VERSAO_TERMO
+    async with httpx.AsyncClient(timeout=30) as client:
+        VERSAO_TERMO = (await client.get(f"{URL}/api/lgpd/termo")).json()["versao"]
     N = 15 # quantidade de usuários simultâneos — pode aumentar para testar mais
     print(f"🚀 Simulando {N} usuários respondendo e chamando a IA ao mesmo tempo...\n")
     await asyncio.gather(*[simular_usuario(i) for i in range(N)])
