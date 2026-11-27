@@ -434,8 +434,8 @@
       erroEl.style.display = 'none';
       try {
         await api.delete('/api/testeinicial/resetar');
-        localStorage.removeItem('pf_respostas_teste_api');
-        localStorage.removeItem('pf_job_id');
+        sessionStorage.removeItem('pf_respostas_teste_api');
+        sessionStorage.removeItem('pf_job_id');
         window.location.href = 'perguntas.html';
       } catch (e) {
         erroEl.textContent = e?.detail?.erro || e?.erro || 'Erro ao resetar. Tente novamente.';

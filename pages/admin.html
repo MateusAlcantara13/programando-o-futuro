@@ -110,6 +110,10 @@
         <div class="metric-label font-jakarta">Usuários</div>
         <div class="metric-value blue font-jakarta" id="mUsuarios">—</div>
       </div>
+      <div class="metric-card" title="Contas com senha ainda sem hash. Cada uma vira hash no próximo login do aluno. O código de texto plano só pode ser removido quando este número chegar a zero.">
+        <div class="metric-label font-jakarta">Senhas sem hash</div>
+        <div class="metric-value font-jakarta" id="mSenhasTextoPlano">—</div>
+      </div>
       <div class="metric-card">
         <div class="metric-label font-jakarta">Perfis Gerados</div>
         <div class="metric-value blue font-jakarta" id="mPerfis">—</div>
@@ -215,8 +219,10 @@
     </div>
   </div>
 
+  <script src="../js/api.js"></script>
   <script>
-    const API = 'https://programando-o-futuro.onrender.com';
+    // Endereço da API vem do ponto único de configuração em js/api.js.
+    const API = API_URL;
     let senhaAdmin = '';
     let _dadosCache = null;
 
@@ -249,6 +255,7 @@
     function renderDados(data) {
       const m = data.metricas;
       document.getElementById('mUsuarios').textContent = m.usuarios;
+      document.getElementById('mSenhasTextoPlano').textContent = m.senhas_texto_plano ?? '—';
       document.getElementById('mPerfis').textContent = m.perfis;
       document.getElementById('mRespostas').textContent = m.respostas;
       document.getElementById('mJobs').textContent = m.jobs_concluidos;

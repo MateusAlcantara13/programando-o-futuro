@@ -333,7 +333,7 @@
     if (qParam && qParam >= 1 && qParam <= perguntas.length) currentQ = qParam;
 
     // TODO BACK-END: carregar respostas salvas do servidor
-    const saved = localStorage.getItem(`pf_modulo_${MODULO_ID}`);
+    const saved = sessionStorage.getItem(`pf_modulo_${MODULO_ID}`);
     if (saved) respostas = JSON.parse(saved);
 
     function renderPergunta(going_back = false) {
@@ -365,7 +365,7 @@
     function selecionarOpcao(letra, el) {
       respostas[currentQ] = letra;
       // TODO BACK-END: PATCH /api/modulos/01/respostas { userId, perguntaId: currentQ, valor: letra }
-      localStorage.setItem(`pf_modulo_${MODULO_ID}`, JSON.stringify(respostas));
+      sessionStorage.setItem(`pf_modulo_${MODULO_ID}`, JSON.stringify(respostas));
       document.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
       el.classList.add('selected');
       atualizarBtnProximo();
@@ -406,13 +406,13 @@
         → desbloqueia módulo 02
         → redireciona para historico.html
       */
-      localStorage.setItem(`pf_modulo_${MODULO_ID}`, JSON.stringify(respostas));
+      sessionStorage.setItem(`pf_modulo_${MODULO_ID}`, JSON.stringify(respostas));
       window.location.href = 'historico.html?modulo_concluido=01';
     }
 
     function sair() {
       // TODO BACK-END: salvar progresso parcial antes de sair
-      localStorage.setItem(`pf_modulo_${MODULO_ID}`, JSON.stringify(respostas));
+      sessionStorage.setItem(`pf_modulo_${MODULO_ID}`, JSON.stringify(respostas));
       window.location.href = 'historico.html';
     }
 

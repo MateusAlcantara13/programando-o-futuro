@@ -608,7 +608,7 @@
     }
 
     async function esperarResultado() {
-      const jobId = localStorage.getItem('pf_job_id');
+      const jobId = sessionStorage.getItem('pf_job_id');
 
       if (jobId) {
         for (let tentativa = 0; tentativa < 60; tentativa++) {
@@ -639,7 +639,7 @@
           await new Promise((resolve) => setTimeout(resolve, 120));
         }
 
-        localStorage.removeItem('pf_job_id');
+        sessionStorage.removeItem('pf_job_id');
 
         document.getElementById('previewArea').textContent = resultado.areaPrincipal || 'Area recomendada';
         document.getElementById('previewPct').textContent = `${resultado.percentualCompatibilidade || 0}%`;
