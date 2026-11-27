@@ -91,6 +91,7 @@ async def main():
     checa((await nulidade(c, "atualizado_em"))[0] == "NO", "atualizado_em é NOT NULL")
     checa((await nulidade(c, "tentativas"))[0] == "NO", "tentativas é NOT NULL")
     checa((await nulidade(c, "recuperacoes"))[0] == "NO", "recuperacoes é NOT NULL")
+    checa((await nulidade(c, "data_referencia")) == ("YES", None), "data_referencia criada, aceita NULL, sem padrão")
     async with c.cursor() as cur:
         await cur.execute("SELECT COUNT(*) FROM jobs WHERE recuperacoes <> 0")
         (diferentes,) = await cur.fetchone()

@@ -67,6 +67,10 @@
     .tl-badge.done { background: rgba(16,185,129,0.1); color: #10b981; border: 1px solid rgba(16,185,129,0.2); }
     .tl-badge.active { background: rgba(37,99,235,0.15); color: #60a5fa; border: 1px solid rgba(37,99,235,0.2); }
     .tl-badge.locked { background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.06); }
+    .tl-badge.pendente { background: rgba(37,99,235,0.15); color: #60a5fa; border: 1px solid rgba(37,99,235,0.2); }
+    .tl-badge.vencido { background: rgba(220,38,38,0.12); color: #f87171; border: 1px solid rgba(220,38,38,0.35); }
+    .tl-step.vencido .tl-dot { border-color: rgba(248,113,113,0.6); }
+    .tl-step.vencido .tl-prazo { color: #f87171; }
 
     /* CONTEUDO DIREITA */
     .content-right { display: flex; flex-direction: column; gap: 1rem; }
@@ -359,8 +363,20 @@
     const pct = v => Math.max(0,Math.min(100,Math.round(Number(v||0))));
     const lim = (t,l=80) => { const s=String(t||'').trim(); return s.length>l?s.slice(0,l-1)+'...':s; };
     const sk = (s,i) => String(s?.id||`step-${i}`);
-    const sv = (s,i) => etapasConcluidas[sk(s,i)]?'done':(s.status||'locked');
-    const sl = st => st==='done'?['done','Concluído']:st==='active'?['active','Atual']:['locked','Planejado'];
+    // Status vem do backend (calcular_status_passos em main.py): a IA não
+    // sabe o que o aluno fez. Aqui ele só é refeito a partir do que está
+    // marcado agora, para a tela mudar na hora; prazoVencido vem do servidor.
+    const sv = (s,i) => etapasConcluidas[sk(s,i)] ? 'concluido' : (s.prazoVencido ? 'vencido' : 'pendente');
+    const sl = st => st==='concluido'?['done','Concluído']:st==='vencido'?['vencido','Prazo vencido']:['pendente','Pendente'];
+    const dataBr = iso => { const d = String(iso||'').slice(0,10).split('-'); return d.length===3 ? `${d[2]}/${d[1]}/${d[0]}` : ''; };
+    // Concluído mostra quando (data gravada pelo servidor); vencido mostra que o prazo acabou.
+    function textoPrazo(s, i) {
+      const vs = sv(s, i);
+      const marca = etapasConcluidas[sk(s, i)];
+      if (vs === 'concluido' && typeof marca === 'string') return `Concluído em ${dataBr(marca)}`;
+      if (vs === 'vencido') return `Prazo encerrado em ${dataBr(s.dataLimite)}`;
+      return s.prazo || s.sub || '';
+    }
 
     let recData = {};
 
@@ -396,11 +412,11 @@
 
         // Timeline desktop
         const div = document.createElement('div');
-        div.className = `tl-step ${vs}${isActive?' active':''}`;
+        div.className = `tl-step ${bc}${isActive?' active':''}`;
         div.innerHTML = `
           <div class="tl-dot-wrap">
             <div class="tl-dot">
-              <svg width="10" height="10" fill="none" stroke="${vs==='locked'?'rgba(255,255,255,0.2)':'#3b82f6'}" stroke-width="2" viewBox="0 0 24 24">
+              <svg width="10" height="10" fill="none" stroke="${vs==='vencido'?'#f87171':'#3b82f6'}" stroke-width="2" viewBox="0 0 24 24">
                 <path d="M12 2L2 7l10 5 10-5-10-5z"/>
               </svg>
             </div>
@@ -413,9 +429,11 @@
           </div>
         `;
         div.querySelector('.tl-title').textContent = step.titulo||`Etapa ${i+1}`;
-        div.querySelector('.tl-prazo').textContent = step.prazo||step.sub||'';
+        div.querySelector('.tl-prazo').textContent = textoPrazo(step, Math.max(i, 0));
         div.querySelector('.tl-badge').textContent = bt;
-        if (vs !== 'locked') div.addEventListener('click', () => selectStep(key));
+        // Todo passo é clicável: antes, um status "locked" inventado pela IA
+        // impedia o aluno de marcar um passo que ele já tinha feito.
+        div.addEventListener('click', () => selectStep(key));
         tl.appendChild(div);
 
         // Select mobile
@@ -437,29 +455,17 @@
       document.getElementById('detailsEmpty').style.display = 'none';
       document.getElementById('detailsContent').style.display = 'block';
       document.getElementById('detailsTitle').textContent = step.titulo||'Detalhes';
-      document.getElementById('detailsSub').textContent = step.prazo||step.sub||'';
+      document.getElementById('detailsSub').textContent = textoPrazo(step, Math.max(i, 0));
 
       const toggle = document.getElementById('stepDoneToggle');
       toggle.checked = Boolean(etapasConcluidas[selectedStepKey]);
       toggle.onchange = () => {
-        const idx = stepsMapa.findIndex((s, idx2) => sk(s, idx2) === selectedStepKey);
-        if (toggle.checked) {
-          etapasConcluidas[selectedStepKey] = true;
-          if (idx >= 0 && idx + 1 < stepsMapa.length) {
-            if (stepsMapa[idx + 1].status === 'locked') {
-              stepsMapa[idx + 1] = { ...stepsMapa[idx + 1], status: 'active' };
-            }
-          }
-        } else {
-          delete etapasConcluidas[selectedStepKey];
-          if (idx >= 0 && idx + 1 < stepsMapa.length) {
-            if (!etapasConcluidas[sk(stepsMapa[idx + 1], idx + 1)]) {
-              stepsMapa[idx + 1] = { ...stepsMapa[idx + 1], status: 'locked' };
-            }
-          }
-        }
+        // true só marca; a data de conclusão é gravada pelo servidor.
+        if (toggle.checked) etapasConcluidas[selectedStepKey] = true;
+        else delete etapasConcluidas[selectedStepKey];
         salvarProgresso();
         renderTimeline();
+        document.getElementById('detailsSub').textContent = textoPrazo(step, Math.max(i, 0));
       };
 
       const caminho = perfilMapa?.caminhos?.[i] || perfilMapa?.caminhos?.[0] || {};
@@ -510,7 +516,7 @@
       if (!usuario) return;
       perfilMapa = await perfilApi.get();
       stepsMapa = perfilMapa.mapaCarreira?.length ? perfilMapa.mapaCarreira : [
-        { id:'inicio', titulo: perfilMapa.areaPrincipal||'Área recomendada', sub: perfilMapa.perfilLabel||'', prazo:'Agora', status:'active' }
+        { id:'inicio', titulo: perfilMapa.areaPrincipal||'Área recomendada', sub: perfilMapa.perfilLabel||'', prazo:'Agora' }
       ];
       document.getElementById('navGreeting').textContent = `Olá, ${fn(usuario.nome)}`;
       document.getElementById('navAvatar').textContent = usuario.avatar_iniciais || ini(usuario.nome);
@@ -520,7 +526,8 @@
       // O cache aparece primeiro; quando o servidor responde, a tela é refeita com o que veio dele.
       await progressoMapa.carregar(atualizarTelaProgresso);
       renderTimeline();
-      const ai = stepsMapa.findIndex(s=>s.status==='active');
+      // Abre no primeiro passo ainda não concluído.
+      const ai = stepsMapa.findIndex((s, idx) => !etapasConcluidas[sk(s, idx)]);
       selectStep(sk(stepsMapa[ai>=0?ai:0], ai>=0?ai:0));
       recData.caminhos  = (perfilMapa.caminhos||[]).slice(0,5).map(i => `<strong>${lim(i.titulo||'Caminho',45)}</strong>${lim(i.descricao||`${i.prazo||''} • ${i.dificuldade||''}`.trim(),100)}`);
       recData.faculdades = (perfilMapa.faculdades||[]).slice(0,5).map(i => `<strong>${lim(i.nome||'Faculdade',40)}</strong>${i.cidade||''} • ${i.programa||i.tipo||''}`);

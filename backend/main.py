@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, StrictBool
 from typing import Optional
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone, date
 import asyncio, httpx, os, logging, jwt, uuid, json, re, random, ssl, hmac, time
 import aiomysql
 import bcrypt
@@ -382,6 +382,7 @@ async def criar_tabelas():
             tentativas INT NOT NULL DEFAULT 0,
             atualizado_em DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             recuperacoes INT NOT NULL DEFAULT 0,
+            data_referencia DATE NULL,
             FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
         )"""
         # Bancos que já existiam recebem essas duas colunas pela migração em
@@ -638,7 +639,56 @@ async def get_usuario(token: dict = Depends(verificar_token)) -> dict:
             return u
 
 # ── IA ─────────────────────────────────────────────────────────────────────────
-def montar_prompt_base(nome: str, linhas_teste: str, linhas_mod: str) -> str:
+# Data de hoje no horário de Brasília. Offset fixo de UTC-3 porque o Brasil
+# não tem horário de verão desde 2019; assim não depende do banco de fusos
+# (tzdata), que o Python no Windows não traz.
+FUSO_BRASILIA = timezone(timedelta(hours=-3), "BRT")
+MESES_PT = ("janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho",
+            "agosto", "setembro", "outubro", "novembro", "dezembro")
+
+def hoje_brasilia(agora_utc: Optional[datetime] = None) -> date:
+    agora = agora_utc or datetime.now(timezone.utc)
+    return agora.astimezone(FUSO_BRASILIA).date()
+
+def data_por_extenso(d: date) -> str:
+    """26 de novembro de 2026. Sem depender de locale do sistema."""
+    return f"{d.day} de {MESES_PT[d.month - 1]} de {d.year}"
+
+# Pergunta do teste inicial que pede cidade e estado (obrigatória).
+PERGUNTA_CIDADE_ID = "3"
+
+def cidade_do_aluno(usuario: dict, respostas_teste: dict) -> Optional[str]:
+    """Cidade e estado do aluno, ou None.
+
+    Vem do perfil (usuarios.cidade) quando preenchido, senão da resposta da
+    pergunta 3 do teste inicial. Não existe campo de cidade no cadastro de
+    propósito: o teste já pede cidade e estado, e pedir de novo seria
+    coletar duas vezes o mesmo dado de um menor de idade. Nunca endereço.
+
+    PRECEDÊNCIA (decisão de 26/11/2026 no ROADMAP): o perfil ganha porque o
+    aluno pode editá-lo depois do teste, então ele é o dado mais recente.
+    Não inverter achando que a resposta do teste é mais confiável.
+
+    Limitação aceita: a cidade só é lida na geração. O plano é uma foto
+    daquele momento, e mudar a cidade no perfil depois não muda o plano.
+    """
+    do_perfil = str(usuario.get("cidade") or "").strip()
+    if do_perfil:
+        return do_perfil[:100]
+    resposta = respostas_teste.get(PERGUNTA_CIDADE_ID) or {}
+    valor = str(resposta.get("valor") or "").strip() if isinstance(resposta, dict) else str(resposta).strip()
+    return valor[:100] or None
+
+def montar_prompt_base(nome: str, linhas_teste: str, linhas_mod: str,
+                       hoje: date, cidade: Optional[str] = None) -> str:
+    bloco_cidade = (
+        f"""
+LOCALIZAÇÃO DO ALUNO: {cidade}
+- Priorize instituições, cursos e programas que ele consiga alcançar de transporte público a partir dessa cidade.
+- Não invente unidade: se não tiver certeza de que existe uma unidade perto, indique a região ou uma opção EAD.
+"""
+        if cidade else ""
+    )
     return f"""Você é um orientador vocacional humanizado, especialista no sistema educacional e de trabalho brasileiro.
 Você está analisando o perfil de um jovem que pode estar perdido, com medo ou sem dinheiro para estudar.
 Sua missão é ser honesto, acolhedor e prático — dando um caminho REAL considerando a situação financeira, localização e contexto de vida dele.
@@ -649,6 +699,11 @@ Considere SEMPRE:
 - Se não fez ENEM: oriente sobre como se preparar e quando fazer
 - Seja específico com nomes de instituições, cursos e programas reais do Brasil
 
+DATA DE HOJE: {data_por_extenso(hoje)} ({hoje.isoformat()}).
+- Todo prazo do plano precisa ser posterior a essa data.
+- Se o prazo de um processo que se repete (ENEM, SISU, ProUni, FIES, vestibulinho, inscrição em curso técnico) já passou neste ano, use a próxima ocorrência dele, com o ano correto.
+- Sempre escreva o ano junto de cada prazo.
+{bloco_cidade}
 DADOS DO USUÁRIO:
 Nome: {nome}
 
@@ -694,7 +749,7 @@ Retorne SOMENTE um JSON válido (sem markdown, sem texto adicional) neste format
   ],
   "alertas": ["string"],
   "mapaCarreira": [
-    {{"id": "string", "titulo": "string", "sub": "string", "prazo": "string", "status": "done|active|locked"}}
+    {{"id": "string", "titulo": "string", "sub": "string", "prazo": "string — curto, sempre com o ano", "dataLimite": "AAAA-MM-DD ou null — último dia para cumprir o passo quando houver data oficial (inscrição, prova); null quando não houver"}}
   ],
   "respostasDestaque": {{
     "preferenciaTrabalho": "string",
@@ -1370,8 +1425,15 @@ async def processar_resultado_ia_db(job_id: str, uid: str, usuario: dict, origem
         for mid, info in PERGUNTAS_MODULOS.items():
             linhas_mod += f"\nMódulo {mid} — {info['titulo']}:\n{fmt_respostas(rm.get(mid, {}))}"
 
-        prompt = montar_prompt_base(usuario["nome"], linhas_teste, linhas_mod)
-        resultado = await chamar_ia(prompt, job_id)
+        hoje = hoje_brasilia()
+        # Gravada antes da chamada: é a data que o prompt usa, e sem ela não
+        # dá para julgar depois se os prazos do plano estavam certos.
+        async with db_pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("UPDATE jobs SET data_referencia=%s WHERE id=%s", (hoje, job_id))
+        prompt = montar_prompt_base(usuario["nome"], linhas_teste, linhas_mod,
+                                    hoje=hoje, cidade=cidade_do_aluno(usuario, rt))
+        resultado = limpar_plano_ia(await chamar_ia(prompt, job_id))
 
         async with db_pool.acquire() as conn:
             async with conn.cursor() as cur:
@@ -1565,6 +1627,91 @@ async def _varrer_jobs_periodicamente():
             # Uma falha do banco numa rodada não pode matar a varredura.
             logger.warning(f"Varredura de jobs travados falhou nesta rodada: {type(e).__name__}: {e}")
 
+# ── Status dos passos do mapa ─────────────────────────────────────────────────
+# O status de cada passo é calculado aqui, a partir do progresso salvo no
+# servidor. A IA não tem como saber o que o aluno já fez, então qualquer
+# status que ela mande é descartado (limpar_plano_ia) e sobrescrito na
+# leitura (calcular_status_passos).
+#   concluido: o aluno marcou; concluidoEm é a data gravada pelo servidor
+#              (None para marcações antigas, gravadas antes de existir data)
+#   vencido:   não marcado e dataLimite já passou; o aluno precisa saber
+#   pendente:  não marcado e sem prazo vencido
+
+def _data_iso(valor) -> Optional[date]:
+    try:
+        return date.fromisoformat(str(valor)[:10]) if valor else None
+    except ValueError:
+        return None
+
+def chave_passo(passo: dict, i: int) -> str:
+    """Mesma chave do front (sk em mapa_carreira.html): id do passo ou step-<posição>."""
+    return str(passo.get("id") or f"step-{i}")
+
+def limpar_plano_ia(dados: dict) -> dict:
+    """Descarta o status que a IA mandar e normaliza dataLimite antes de gravar o plano."""
+    passos = dados.get("mapaCarreira") if isinstance(dados, dict) else None
+    if isinstance(passos, list):
+        for p in passos:
+            if isinstance(p, dict):
+                p.pop("status", None)
+                limite = _data_iso(p.get("dataLimite"))
+                p["dataLimite"] = limite.isoformat() if limite else None
+    return dados
+
+def calcular_status_passos(passos: list, etapas: dict, hoje: date) -> list:
+    resultado = []
+    for i, p in enumerate(passos or []):
+        if not isinstance(p, dict):
+            resultado.append(p)
+            continue
+        q = {k: v for k, v in p.items() if k != "status"}
+        limite = _data_iso(p.get("dataLimite"))
+        q["dataLimite"] = limite.isoformat() if limite else None
+        q["prazoVencido"] = bool(limite and limite < hoje)
+        marca = (etapas or {}).get(chave_passo(p, i))
+        if marca:
+            q["status"] = "concluido"
+            q["concluidoEm"] = marca if isinstance(marca, str) else None
+        else:
+            q["status"] = "vencido" if q["prazoVencido"] else "pendente"
+            q["concluidoEm"] = None
+        resultado.append(q)
+    return resultado
+
+def aplicar_status_ao_plano(dados: dict, etapas: dict, hoje: date) -> dict:
+    if isinstance(dados.get("mapaCarreira"), list):
+        dados = {**dados, "mapaCarreira": calcular_status_passos(dados["mapaCarreira"], etapas, hoje)}
+    return dados
+
+def mesclar_conclusoes(existentes: dict, enviadas: dict, agora_iso: str) -> dict:
+    """Junta as etapas marcadas pelo aluno com as datas que o servidor já tinha.
+
+    A data de conclusão é sempre do servidor: a de uma etapa que já estava
+    marcada é mantida, e a de uma etapa nova é agora. O valor que o
+    navegador manda só diz se está marcada; data vinda dele é ignorada.
+    Marcação antiga gravada como true continua true: não se inventa data.
+    """
+    existentes = existentes or {}
+    resultado = {}
+    for chave, marcado in (enviadas or {}).items():
+        if not marcado:
+            continue
+        anterior = existentes.get(str(chave))
+        resultado[str(chave)] = anterior if anterior else agora_iso
+    return resultado
+
+async def _etapas_do_aluno(cur, usuario_id: str) -> dict:
+    await cur.execute("SELECT etapas_concluidas FROM mapa_progresso WHERE usuario_id = %s", (usuario_id,))
+    linha = await cur.fetchone()
+    if not linha:
+        return {}
+    bruto = linha["etapas_concluidas"] if isinstance(linha, dict) else linha[0]
+    try:
+        etapas = json.loads(bruto or "{}")
+    except ValueError:
+        return {}
+    return etapas if isinstance(etapas, dict) else {}
+
 # ── Resultado ──────────────────────────────────────────────────────────────────
 @app.get("/api/resultado/status")
 async def resultado_status(jobId: str, usuario: dict = Depends(get_usuario)):
@@ -1587,7 +1734,7 @@ async def get_resultado(usuario: dict = Depends(get_usuario)):
             r = await cur.fetchone()
             if not r:
                 raise HTTPException(status_code=404, detail={"erro": "Resultado não encontrado", "codigo": "RESULTADO_NAO_ENCONTRADO"})
-            dados = json.loads(r["dados"])
+            dados = aplicar_status_ao_plano(json.loads(r["dados"]), await _etapas_do_aluno(cur, usuario["id"]), hoje_brasilia())
             dados["_atualizado_em"] = r["atualizado_em"].isoformat() if r["atualizado_em"] else None
             return dados
 
@@ -1706,7 +1853,7 @@ async def get_perfil(usuario: dict = Depends(get_usuario)):
             r = await cur.fetchone()
             if not r:
                 raise HTTPException(status_code=404, detail={"erro": "Perfil não gerado"})
-            return json.loads(r["dados"])
+            return aplicar_status_ao_plano(json.loads(r["dados"]), await _etapas_do_aluno(cur, usuario["id"]), hoje_brasilia())
 
 @app.get("/api/mapa/progresso")
 async def get_mapa_progresso(usuario: dict = Depends(get_usuario)):
@@ -1728,10 +1875,14 @@ async def get_mapa_progresso(usuario: dict = Depends(get_usuario)):
 @app.post("/api/mapa/progresso")
 async def save_mapa_progresso(body: dict, usuario: dict = Depends(get_usuario)):
     usuario_id = usuario["id"]
-    etapas = json.dumps(body.get("etapasConcluidas", {}))
     checks = json.dumps(body.get("checksFeitos", {}))
     async with db_pool.acquire() as conn:
-        async with conn.cursor() as cur:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            # Data de conclusão vem do servidor (ver mesclar_conclusoes).
+            agora = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            etapas_dict = mesclar_conclusoes(await _etapas_do_aluno(cur, usuario_id),
+                                             body.get("etapasConcluidas") or {}, agora)
+            etapas = json.dumps(etapas_dict)
             await cur.execute("""
                 INSERT INTO mapa_progresso (usuario_id, etapas_concluidas, checks_feitos)
                 VALUES (%s, %s, %s)
@@ -1740,7 +1891,7 @@ async def save_mapa_progresso(body: dict, usuario: dict = Depends(get_usuario)):
                     checks_feitos = %s,
                     atualizado_em = CURRENT_TIMESTAMP
             """, (usuario_id, etapas, checks, etapas, checks))
-    return {"ok": True}
+    return {"ok": True, "etapasConcluidas": etapas_dict}
 
 @app.get("/api/mapa")
 async def get_mapa(usuario: dict = Depends(get_usuario)):
@@ -1750,7 +1901,7 @@ async def get_mapa(usuario: dict = Depends(get_usuario)):
             r = await cur.fetchone()
             if not r:
                 raise HTTPException(status_code=404, detail={"erro": "Perfil não gerado"})
-            dados = json.loads(r["dados"])
+            dados = aplicar_status_ao_plano(json.loads(r["dados"]), await _etapas_do_aluno(cur, usuario["id"]), hoje_brasilia())
             return {"steps": dados.get("mapaCarreira", [])}
 
 @app.get("/api/jornada/progresso")
