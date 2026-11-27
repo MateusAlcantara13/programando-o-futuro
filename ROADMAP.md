@@ -4,13 +4,20 @@
 > **NÃO RELIGAR O DEPLOY antes de cumprir, um a um, os quatro pré-requisitos abaixo.**
 > Pendência da reconexão do deploy, registrada em 26/11/2026 e atualizada no mesmo dia.
 >
+> **Atualização de 26/11/2026, banco novo:** o banco antigo do Aiven não existe mais. Foi criado um projeto e um serviço novos no Aiven, MySQL 8.4, hospedado no DigitalOcean (região nyc), com o banco **vazio**. Por isso:
+> - o pré-requisito a não se aplica a este banco, e a migração de senhas em texto plano também não, porque não existe nenhuma linha;
+> - o pré-requisito d ficou mais importante: o `backend/ca.pem` do repositório é a CA do projeto **antigo** e não vai validar o certificado do serviço novo. O `DB_SSL_CA` precisa apontar para a CA do projeto novo;
+> - depois que o deploy subir, falta o item e) abaixo;
+> - o trial do Aiven vence por volta de 26/12/2026, quando o sistema roda na escola: ver "Riscos conhecidos" no `ROADMAP.md`.
+>
 > **Pré-requisitos que faltam:**
-> - **a) Conferir no Aiven se existe linha com `aceite_lgpd` nulo** (`SELECT COUNT(*) FROM usuarios WHERE aceite_lgpd IS NULL`). Se existir, a migração do Bloco 3 (`backend/migracoes/usuarios_aceite_lgpd.py`) para a aplicação de propósito, e isso vai parecer deploy quebrado para quem não souber. A migração não inventa valor de consentimento: decidir antes o que essas linhas significam.
+> - **a) [Não se aplica ao banco novo, que está vazio. Mantido para o caso de algum dia migrar dados de outro banco.]** **Conferir no Aiven se existe linha com `aceite_lgpd` nulo** (`SELECT COUNT(*) FROM usuarios WHERE aceite_lgpd IS NULL`). Se existir, a migração do Bloco 3 (`backend/migracoes/usuarios_aceite_lgpd.py`) para a aplicação de propósito, e isso vai parecer deploy quebrado para quem não souber. A migração não inventa valor de consentimento: decidir antes o que essas linhas significam.
 > - **b) `JWT_SECRET` e `ADMIN_SECRET` novos.** Os antigos tiveram valor padrão escrito no código e estão no histórico público do Git. Mover os valores antigos para variável de ambiente não resolve.
 > - **c) `CORS_ORIGENS` configurada.** Com `AMBIENTE=producao`, sem ela a aplicação não sobe.
-> - **d) `DB_SSL_CA` e verificação de hostname.** A CA do provedor do banco configurada, e a verificação de hostname e a consulta a `Ssl_cipher` conferidas contra o banco de produção, que tem TLS. O banco local roda sem TLS, então nada disso foi testado aqui.
+> - **d) `DB_SSL_CA` e verificação de hostname.** A CA do provedor do banco configurada, e a verificação de hostname e a consulta a `Ssl_cipher` conferidas contra o banco de produção, que tem TLS. O banco local roda sem TLS, então nada disso foi testado aqui. Com o banco novo, o `backend/ca.pem` do repositório não serve: ele é a CA do projeto antigo.
+> - **e) Depois que o deploy subir: restringir o IP allowlist do banco**, hoje em "Open to all", aos IPs de saída do Render.
 >
-> **Já cumprido em 26/11/2026:** os oito testes de MySQL rodaram contra MySQL 8.0.46 local (`127.0.0.1`) e passaram. O teste de carga com 15 alunos ao mesmo tempo também passou, mas com a espera da IA simulada encurtada; ver a ressalva na Fase 1 do `ROADMAP.md`, que diz o que ele validou e o que não validou.
+> **Já cumprido em 26/11/2026:** os oito testes de MySQL rodaram contra MySQL 8.0.46 local (`127.0.0.1`) e passaram, e depois contra MySQL 8.4.13 local, a mesma série do banco novo, com o mesmo número de verificações. O teste de carga com 15 alunos ao mesmo tempo também passou, mas com a espera da IA simulada encurtada; ver a ressalva na Fase 1 do `ROADMAP.md`, que diz o que ele validou e o que não validou.
 >
 > Texto original do aviso, com a condição antiga, já cumprida:
 >
@@ -163,6 +170,15 @@ Como verificar: Ricardo segue o documento numa máquina onde o ambiente nunca fo
 **Como ficou no PR #5 (01/11/2026).** O `CLAUDE.md` já dizia que a validação de cada PR acontecia no ambiente local com Docker, mas até esse PR o repositório não tinha esse ambiente. Agora tem. O banco sobe pelo `docker-compose.yml` na raiz (MySQL 8.0 na porta 3306, com a aplicação conectando sem TLS por `DB_SSL_DISABLED=true`), e a documentação ficou na seção "Como rodar localmente" do README em vez de `docs/ambiente-local.md`. Falta a verificação pelo Ricardo descrita acima.
 
 **Reconexão do deploy.** Última tarefa da fase, só depois de todas as outras fechadas e do banco de produção resolvido. Antes de reconectar: confirmar no painel do Render que o serviço aponta para `MateusAlcantara13/programando-o-futuro`; cadastrar as variáveis de ambiente de produção, já sem nenhum valor padrão no código; usar `DB_SSL_MODE=verificar` com a CA do provedor novo; e confirmar que a `ADMIN_SECRET` foi trocada. Depois de reconectar, o `CLAUDE.md` volta a dizer que merge na `main` publica em produção.
+
+**Banco de produção novo (26/11/2026).**
+- O banco antigo do Aiven não existe mais. Foi criado um projeto e um serviço novos no Aiven, MySQL 8.4, hospedado no DigitalOcean (região nyc), com o banco **vazio**.
+- **Os dados de maio não existem mais**: usuários, respostas, planos e jobs da validação com os 31 alunos.
+- Por isso, o pré-requisito a do aviso do topo (`aceite_lgpd` nulo) e a migração de senhas em texto plano não se aplicam a este banco, porque não há linha nenhuma. A pendência 2 do Bloco 3, sobre os usuários com aceite anterior a 26/11/2026, também deixa de valer.
+- A CA muda com o projeto novo: o `backend/ca.pem` do repositório é a do projeto antigo, e o `DB_SSL_CA` precisa apontar para a do novo.
+- **Pendência:** o IP allowlist do banco está em "Open to all". Restringir aos IPs de saída do Render depois que o deploy subir.
+- **Cobertura dos testes:** os oito testes de MySQL agora rodam no 8.0.46 e no 8.4.13, a mesma série do banco novo, e passaram nos dois com o mesmo número de verificações. Eles continuam sem cobrir TLS e a caixa de nomes de tabela (ver "Riscos conhecidos").
+- O risco do vencimento do trial está em "Riscos conhecidos".
 
 Cinco pendências descobertas em 01/11/2026, também antes de reconectar:
 
@@ -357,6 +373,8 @@ Lista de estacionamento. Nada aqui é trabalhado neste semestre. Revisão em dez
 
 **A reestruturação do schema é a mudança mais arriscada do semestre.** Ela toca prompt, backend e quatro telas ao mesmo tempo. É por isso que ela vem depois dos testes e não antes.
 
-**`lower_case_table_names` diferente entre o teste local e a produção.** Os testes de 26/11/2026 rodaram num MySQL 8.0.46 em Windows, onde `lower_case_table_names` vale 1: nomes de tabela são guardados em minúsculas e comparados sem diferenciar maiúsculas. Em Linux, que é onde o Aiven roda, o padrão é 0, que diferencia (conferir o valor no Aiven). Um nome de tabela escrito em caixa errada no código passa no teste local e quebra na produção, e nenhum teste daqui pega isso. Hoje o código usa só minúsculas. Rodar os testes num MySQL em Linux fecharia essa lacuna.
+**O trial do Aiven vence por volta de 26/12/2026, e o serviço desliga sozinho.** Registrado em 26/11/2026. Sem cartão cadastrado, o serviço do banco desliga no fim do trial. Foi o mesmo motivo pelo qual o banco anterior sumiu, levando os dados de maio. E dezembro é justamente quando o sistema roda na escola. Isto é risco, e não pendência comum: se ninguém agir antes, o sistema perde o banco no meio do uso com os alunos. Decidir antes de 26/12/2026 entre cadastrar forma de pagamento, migrar para outro provedor com prazo conhecido ou exportar os dados de forma periódica.
+
+**`lower_case_table_names` diferente entre o teste local e a produção.** Os testes de 26/11/2026 rodaram num MySQL 8.0.46 e num 8.4.13, os dois em Windows, onde `lower_case_table_names` vale 1: nomes de tabela são guardados em minúsculas e comparados sem diferenciar maiúsculas. Em Linux, que é onde o Aiven roda, o padrão é 0, que diferencia (conferir o valor no Aiven). Um nome de tabela escrito em caixa errada no código passa no teste local e quebra na produção, e nenhum teste daqui pega isso. Hoje o código usa só minúsculas. Rodar os testes num MySQL em Linux fecharia essa lacuna.
 
 **Uso de API pay-per-use durante os testes.** Doze perfis rodados três vezes ao longo do semestre consomem cota. Vale acompanhar o gasto desde a Fase 1 para não descobrir o limite em novembro.
