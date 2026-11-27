@@ -1,6 +1,19 @@
 # Programando o Futuro — Plano do Segundo Semestre de 2026
 
 > [!CAUTION]
+> **NÃO RELIGAR O DEPLOY antes de cumprir, um a um, os quatro pré-requisitos abaixo.**
+> Pendência da reconexão do deploy, registrada em 26/11/2026 e atualizada no mesmo dia.
+>
+> **Pré-requisitos que faltam:**
+> - **a) Conferir no Aiven se existe linha com `aceite_lgpd` nulo** (`SELECT COUNT(*) FROM usuarios WHERE aceite_lgpd IS NULL`). Se existir, a migração do Bloco 3 (`backend/migracoes/usuarios_aceite_lgpd.py`) para a aplicação de propósito, e isso vai parecer deploy quebrado para quem não souber. A migração não inventa valor de consentimento: decidir antes o que essas linhas significam.
+> - **b) `JWT_SECRET` e `ADMIN_SECRET` novos.** Os antigos tiveram valor padrão escrito no código e estão no histórico público do Git. Mover os valores antigos para variável de ambiente não resolve.
+> - **c) `CORS_ORIGENS` configurada.** Com `AMBIENTE=producao`, sem ela a aplicação não sobe.
+> - **d) `DB_SSL_CA` e verificação de hostname.** A CA do provedor do banco configurada, e a verificação de hostname e a consulta a `Ssl_cipher` conferidas contra o banco de produção, que tem TLS. O banco local roda sem TLS, então nada disso foi testado aqui.
+>
+> **Já cumprido em 26/11/2026:** os oito testes de MySQL rodaram contra MySQL 8.0.46 local (`127.0.0.1`) e passaram. O teste de carga com 15 alunos ao mesmo tempo também passou, mas com a espera da IA simulada encurtada; ver a ressalva na Fase 1 do `ROADMAP.md`, que diz o que ele validou e o que não validou.
+>
+> Texto original do aviso, com a condição antiga, já cumprida:
+>
 > **NÃO RELIGAR O DEPLOY antes de rodar com MySQL local os oito testes abaixo e ver todos passarem.**
 > Pendência da reconexão do deploy, registrada em 26/11/2026.
 >
@@ -190,6 +203,8 @@ Correção do tipo de `mapa_progresso.usuario_id`, hoje `INT` recebendo UUID, co
 Reescrita do `teste_carga.py` para rodar com número de usuários parametrizável e produzir relatório com taxa de sucesso, latência média e distribuição de erros. Execução com 15, 31 e 50 usuários, com os números registrados. Montagem do conjunto de doze perfis fixos de teste e da rubrica de qualidade descrita na seção 8. Geração da linha de base de qualidade usando o sistema como está hoje.
 A versão completa do `teste_carga.py` usada na validação de maio nunca foi commitada e se perdeu. No repositório existe só um script simples de 67 linhas, que aponta para o Render e não gera relatório. Ele serve de ponto de partida, mas a tarefa passa a ser escrever o teste do zero.
 
+**Ressalva do teste de carga de 26/11/2026.** O `teste_carga.py` rodou com 15 alunos ao mesmo tempo contra o backend local e os 15 concluíram: no máximo 5 gerações abertas ao mesmo tempo, os outros esperando na fila, todos na primeira tentativa. Mas ele rodou com `IA_SIMULADA=true` e `IA_SIMULADA_ESPERA=5,8`, ou seja, cada geração levou de 5 a 8 s, e não os 94 a 101 s reais. Isso foi preciso porque o script espera no máximo 60 s por aluno. Ele **validou o fluxo, não o tempo real**. A hipótese das falhas de maio, sobre a margem entre a geração de 94 a 101 s e o timeout, continua **SEM confirmação**. O teste de carga com a espera real é pendência do Bloco 7.
+
 A linha de base precisa sair antes de qualquer mudança no prompt. Sem ela, não há comparação possível em dezembro.
 
 **Marco da semana 4:** cinquenta usuários simultâneos com falha abaixo de cinco por cento, e doze planos de linha de base arquivados.
@@ -341,5 +356,7 @@ Lista de estacionamento. Nada aqui é trabalhado neste semestre. Revisão em dez
 **Três pessoas em vez de cinco.** O cronograma já considera isso, mas não há folga real. Se a Fase 2 atrasar, a verificação de instituições da semana 12 é o primeiro item a ser cortado.
 
 **A reestruturação do schema é a mudança mais arriscada do semestre.** Ela toca prompt, backend e quatro telas ao mesmo tempo. É por isso que ela vem depois dos testes e não antes.
+
+**`lower_case_table_names` diferente entre o teste local e a produção.** Os testes de 26/11/2026 rodaram num MySQL 8.0.46 em Windows, onde `lower_case_table_names` vale 1: nomes de tabela são guardados em minúsculas e comparados sem diferenciar maiúsculas. Em Linux, que é onde o Aiven roda, o padrão é 0, que diferencia (conferir o valor no Aiven). Um nome de tabela escrito em caixa errada no código passa no teste local e quebra na produção, e nenhum teste daqui pega isso. Hoje o código usa só minúsculas. Rodar os testes num MySQL em Linux fecharia essa lacuna.
 
 **Uso de API pay-per-use durante os testes.** Doze perfis rodados três vezes ao longo do semestre consomem cota. Vale acompanhar o gasto desde a Fase 1 para não descobrir o limite em novembro.

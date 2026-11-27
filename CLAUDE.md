@@ -1,6 +1,19 @@
 # Programando o Futuro
 
 > [!CAUTION]
+> **NÃO RELIGAR O DEPLOY antes de cumprir, um a um, os quatro pré-requisitos abaixo.**
+> Pendência da reconexão do deploy, registrada em 26/11/2026 e atualizada no mesmo dia.
+>
+> **Pré-requisitos que faltam:**
+> - **a) Conferir no Aiven se existe linha com `aceite_lgpd` nulo** (`SELECT COUNT(*) FROM usuarios WHERE aceite_lgpd IS NULL`). Se existir, a migração do Bloco 3 (`backend/migracoes/usuarios_aceite_lgpd.py`) para a aplicação de propósito, e isso vai parecer deploy quebrado para quem não souber. A migração não inventa valor de consentimento: decidir antes o que essas linhas significam.
+> - **b) `JWT_SECRET` e `ADMIN_SECRET` novos.** Os antigos tiveram valor padrão escrito no código e estão no histórico público do Git. Mover os valores antigos para variável de ambiente não resolve.
+> - **c) `CORS_ORIGENS` configurada.** Com `AMBIENTE=producao`, sem ela a aplicação não sobe.
+> - **d) `DB_SSL_CA` e verificação de hostname.** A CA do provedor do banco configurada, e a verificação de hostname e a consulta a `Ssl_cipher` conferidas contra o banco de produção, que tem TLS. O banco local roda sem TLS, então nada disso foi testado aqui.
+>
+> **Já cumprido em 26/11/2026:** os oito testes de MySQL rodaram contra MySQL 8.0.46 local (`127.0.0.1`) e passaram. O teste de carga com 15 alunos ao mesmo tempo também passou, mas com a espera da IA simulada encurtada; ver a ressalva na Fase 1 do `ROADMAP.md`, que diz o que ele validou e o que não validou.
+>
+> Texto original do aviso, com a condição antiga, já cumprida:
+>
 > **NÃO RELIGAR O DEPLOY antes de rodar com MySQL local os oito testes abaixo e ver todos passarem.**
 > Pendência da reconexão do deploy, registrada em 26/11/2026.
 >
