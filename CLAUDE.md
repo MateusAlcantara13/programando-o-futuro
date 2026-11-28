@@ -94,6 +94,8 @@ Mensagens de commit em português, no imperativo, descrevendo o que mudou e por 
 > - a validação de cada PR acontece no ambiente local com Docker **antes** do merge, nunca depois;
 > - merge na `main` equivale a publicar, então não faça merge de PR que não rodou localmente;
 > - depois de cada merge, conferir no painel do Render se o deploy subiu e olhar o log de subida.
+>
+> **Exceção (28/11/2026):** existe uma exceção estreita à validação local antes do merge, para PR que o rollback do Render desfaz por inteiro e que não pode impedir a aplicação de subir. As condições, e o que fazer depois do merge, estão no registro de decisões do `ROADMAP.md`. Migração, esquema e qualquer coisa que rode na inicialização nunca entram nela.
 
 ## Segredos
 
