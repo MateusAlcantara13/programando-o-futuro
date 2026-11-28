@@ -1,6 +1,25 @@
 # Programando o Futuro
 
-> [!CAUTION]
+> [!NOTE]
+> **Deploy religado em 28/11/2026.** O aviso "NÃO RELIGAR O DEPLOY" cumpriu o papel dele e fica abaixo, marcado como cumprido.
+>
+> **O que aconteceu em 28/11/2026:**
+> - Serviço novo no Render, criado do zero, porque o antigo não existia mais na conta. Plano gratuito, região Oregon, pasta raiz `backend`, start com uvicorn na porta fornecida pelo Render.
+> - Endereço: https://programando-o-futuro-4lg4.onrender.com. O Render acrescentou o sufixo `-4lg4` porque o nome simples já estava em uso.
+> - O log de subida confirmou `AMBIENTE=producao`, banco conectado com TLS, nenhuma senha em texto plano, os dois semáforos (geração e lista) e a varredura de jobs.
+> - As migrações rodaram e não precisaram alterar nada, porque o banco é novo e vazio.
+> - **Auto-Deploy "On Commit" ligado:** todo merge na `main` publica em produção sozinho. Ver "Regras de Git" no `CLAUDE.md`.
+> - A CA do projeto Aiven novo foi colocada no Render como Secret File, em `/etc/secrets/ca-aiven.pem`, e a variável `DB_SSL_CA` aponta para esse caminho absoluto.
+> - No mesmo dia rodou o primeiro teste de ponta a ponta em produção: ver "Teste de ponta a ponta em produção" na Fase 0 do `ROADMAP.md`.
+>
+> **Pendências abertas depois da subida:**
+> - **`backend/ca.pem` desatualizado.** O arquivo versionado continua sendo a CA do projeto Aiven **antigo**. Em produção isso não quebra, porque o `DB_SSL_CA` aponta para o Secret File. Mas quem clonar o repositório e tentar conectar no banco de produção com a configuração padrão vai falhar: sem `DB_SSL_CA`, o código usa o `backend/ca.pem`, e essa CA não valida o certificado do serviço novo. Solução definitiva: substituir o `backend/ca.pem` pela CA nova e commitar. Não foi feito em 28/11/2026 porque o arquivo não estava na máquina usada.
+> - **IP allowlist do banco** ainda em "Open to all". Restringir aos IPs de saída do Render.
+> - **Trial do Aiven vence por volta de 26/12/2026**, e o serviço desliga sozinho sem cartão cadastrado: ver "Riscos conhecidos" no `ROADMAP.md`.
+> - **`JWT_SECRET` e `ADMIN_SECRET` (pré-requisito b, abaixo).** Os valores atuais foram gerados pelo Render, então são novos em relação aos do histórico do Git. Mas apareceram na tela durante a configuração e passaram por uma conversa com assistente de IA, o que é uma exposição nova, menor mas real. Fecha quando os dois forem gerados de novo no Render, pelo botão Generate, e salvos.
+>
+> **Aviso anterior, que cumpriu o papel em 28/11/2026. Os itens b) e e) continuam abertos:**
+>
 > **NÃO RELIGAR O DEPLOY antes de cumprir, um a um, os quatro pré-requisitos abaixo.**
 > Pendência da reconexão do deploy, registrada em 26/11/2026 e atualizada no mesmo dia.
 >
@@ -12,10 +31,10 @@
 >
 > **Pré-requisitos que faltam:**
 > - **a) [Não se aplica ao banco novo, que está vazio. Mantido para o caso de algum dia migrar dados de outro banco.]** **Conferir no Aiven se existe linha com `aceite_lgpd` nulo** (`SELECT COUNT(*) FROM usuarios WHERE aceite_lgpd IS NULL`). Se existir, a migração do Bloco 3 (`backend/migracoes/usuarios_aceite_lgpd.py`) para a aplicação de propósito, e isso vai parecer deploy quebrado para quem não souber. A migração não inventa valor de consentimento: decidir antes o que essas linhas significam.
-> - **b) `JWT_SECRET` e `ADMIN_SECRET` novos.** Os antigos tiveram valor padrão escrito no código e estão no histórico público do Git. Mover os valores antigos para variável de ambiente não resolve.
-> - **c) `CORS_ORIGENS` configurada.** Com `AMBIENTE=producao`, sem ela a aplicação não sobe.
-> - **d) `DB_SSL_CA` e verificação de hostname.** A CA do provedor do banco configurada, e a verificação de hostname e a consulta a `Ssl_cipher` conferidas contra o banco de produção, que tem TLS. O banco local roda sem TLS, então nada disso foi testado aqui. Com o banco novo, o `backend/ca.pem` do repositório não serve: ele é a CA do projeto antigo.
-> - **e) Depois que o deploy subir: restringir o IP allowlist do banco**, hoje em "Open to all", aos IPs de saída do Render.
+> - **b) [Aberto em 28/11/2026. Os valores foram gerados pelo Render e são novos em relação aos do histórico do Git, mas foram expostos na configuração. Fecha quando os dois forem gerados de novo pelo botão Generate do Render e salvos.]** **`JWT_SECRET` e `ADMIN_SECRET` novos.** Os antigos tiveram valor padrão escrito no código e estão no histórico público do Git. Mover os valores antigos para variável de ambiente não resolve.
+> - **c) [Cumprido em 28/11/2026: com `AMBIENTE=producao` a aplicação só sobe com a variável definida, e ela subiu.]** **`CORS_ORIGENS` configurada.** Com `AMBIENTE=producao`, sem ela a aplicação não sobe.
+> - **d) [Cumprido em 28/11/2026 no caminho em que tudo está certo: CA nova pelo Secret File, hostname verificado (`check_hostname` fica ligado) e `Ssl_cipher` preenchido, porque a aplicação recusa subir com ele vazio. Os testes de recusa, com CA errada e com nome de servidor errado, não foram feitos contra o banco de produção.]** **`DB_SSL_CA` e verificação de hostname.** A CA do provedor do banco configurada, e a verificação de hostname e a consulta a `Ssl_cipher` conferidas contra o banco de produção, que tem TLS. O banco local roda sem TLS, então nada disso foi testado aqui. Com o banco novo, o `backend/ca.pem` do repositório não serve: ele é a CA do projeto antigo.
+> - **e) [Continua aberto em 28/11/2026: ver as pendências acima.]** **Depois que o deploy subir: restringir o IP allowlist do banco**, hoje em "Open to all", aos IPs de saída do Render.
 >
 > **Já cumprido em 26/11/2026:** os oito testes de MySQL rodaram contra MySQL 8.0.46 local (`127.0.0.1`) e passaram, e depois contra MySQL 8.4.13 local, a mesma série do banco novo, com o mesmo número de verificações. O teste de carga com 15 alunos ao mesmo tempo também passou, mas com a espera da IA simulada encurtada; ver a ressalva na Fase 1 do `ROADMAP.md`, que diz o que ele validou e o que não validou.
 >
@@ -42,7 +61,7 @@
 
 Plataforma web que gera planos de carreira personalizados para estudantes de escola pública usando a API do Claude. Projeto de extensão do Centro Universitário SENAI-SP. Validado em campo na escola parceira em maio de 2026, com 31 alunos.
 
-O sistema está fora do ar, mas os dados reais de alunos, incluindo menores de idade, continuam no banco de produção. O mesmo cuidado se aplica a toda alteração.
+O sistema está no ar desde 28/11/2026, em https://programando-o-futuro-4lg4.onrender.com, com um banco novo. Os dados da validação de maio não existem mais, mas o banco de produção vai receber dados reais de alunos, incluindo menores de idade, assim que o sistema for usado na escola. O mesmo cuidado se aplica a toda alteração.
 
 ## Como trabalhar comigo
 
@@ -68,7 +87,13 @@ Depois de implementar, pare e me mostre o resultado antes de commitar. Eu confir
 
 Mensagens de commit em português, no imperativo, descrevendo o que mudou e por quê quando não for óbvio.
 
-O deploy está desligado desde 08/10/2026. A branch `main` não publica nada. A validação de cada PR acontece no ambiente local com Docker. O deploy no Render volta só quando a Fase 0 estiver fechada e o banco de produção resolvido, conforme a última tarefa da Fase 0 no `ROADMAP.md`.
+> [!WARNING]
+> **Desde 28/11/2026, todo merge na `main` publica em produção sozinho.** O serviço do Render está com Auto-Deploy "On Commit". Até 27/11/2026 a `main` era segura, porque o deploy estava desligado desde 08/10/2026. Isso acabou: um PR mal testado que entra na `main` vai para o ar automaticamente, com alunos podendo usar, e as migrações rodam sozinhas contra o banco de produção na subida.
+>
+> Na prática:
+> - a validação de cada PR acontece no ambiente local com Docker **antes** do merge, nunca depois;
+> - merge na `main` equivale a publicar, então não faça merge de PR que não rodou localmente;
+> - depois de cada merge, conferir no painel do Render se o deploy subiu e olhar o log de subida.
 
 ## Segredos
 
@@ -82,9 +107,9 @@ Nunca escreva valor padrão de segredo no código. Se uma variável de ambiente 
 
 Back-end: Python com FastAPI e Uvicorn, acesso ao banco com aiomysql sobre SSL.
 Front-end: HTML, CSS e JavaScript puro, sem framework.
-Banco: MySQL no Aiven.
+Banco: MySQL 8.4 no Aiven, serviço novo criado em 26/11/2026, em trial até cerca de 26/12/2026.
 IA: API do Claude chamada direto via httpx.
-Hospedagem: Render, plano gratuito. Desligado desde 08/10/2026, volta no fim da Fase 0.
+Hospedagem: Render, plano gratuito, região Oregon. Desligado de 08/10/2026 a 28/11/2026, no ar desde então num serviço novo.
 
 Estrutura:
 
@@ -140,6 +165,10 @@ Qualidade da saída, previsto para a Fase 3:
 - **Resolvido em 26/11/2026 (PR #12).** O status é calculado no backend a partir do progresso salvo, e o que vier da IA é descartado. O schema passou a pedir `dataLimite` no lugar do `status`. Texto original:
   O campo `status` do `mapaCarreira` é gerado pela IA, que não tem como saber o que o aluno já fez.
 - Nenhum passo tem critério de conclusão verificável e nenhum array tem cardinalidade definida.
+
+Interface, encontrado no teste de ponta a ponta em produção de 28/11/2026:
+
+- A pergunta 13 do questionário diz "Escolha até 2 opções", mas a interface só aceita uma: clicar na segunda desmarca a primeira. A pergunta está definida em `backend/main.py` com `"tipo":"opcoes"`, o mesmo tipo das perguntas de escolha única, e nenhuma pergunta do questionário usa múltipla escolha. Corrigir pede uma decisão antes: mudar o texto para uma opção só, ou criar a múltipla escolha no front e no back, o que muda como a resposta é gravada e como chega ao prompt.
 
 ## Equipe e áreas
 
