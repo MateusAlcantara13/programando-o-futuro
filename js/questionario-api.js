@@ -89,7 +89,12 @@
     const b = blocos[indice];
     document.getElementById('questionCard').hidden = true;
     document.getElementById('blockIntro').hidden = false;
-    document.getElementById('blockIntroEyebrow').textContent = `Parte ${indice + 1} de ${blocos.length}`;
+    // "2/5" grande na tela; o leitor de tela recebe "Parte 2 de 5".
+    // Só números entram no HTML.
+    document.getElementById('blockIntroEyebrow').innerHTML =
+      `<span class="parte-atual" aria-hidden="true">${indice + 1}</span>`
+      + `<span class="parte-total" aria-hidden="true">/${blocos.length}</span>`
+      + `<span class="sr-only">Parte ${indice + 1} de ${blocos.length}</span>`;
     document.getElementById('blockIntroTitle').textContent = b.nome;
     document.getElementById('blockIntroText').textContent = TEXTOS_BLOCO[b.nome] || '';
     renderProgressoBlocos(indice, 0);
