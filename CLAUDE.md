@@ -4,7 +4,7 @@
 > **Deploy religado em 28/11/2026.** O aviso "NÃO RELIGAR O DEPLOY" cumpriu o papel dele e fica abaixo, marcado como cumprido.
 >
 > **O que aconteceu em 28/11/2026:**
-> - Serviço novo no Render, criado do zero, porque o antigo não existia mais na conta. Plano gratuito, região Oregon, pasta raiz `backend`, start com uvicorn na porta fornecida pelo Render.
+> - Serviço novo no Render, criado do zero, porque o antigo não existia mais na conta. Plano gratuito, região Oregon. A pasta raiz do serviço é a raiz do repositório, de propósito, e os comandos de build e de start apontam para `backend/` (ver o registro de decisões no `ROADMAP.md`). O start roda o uvicorn na porta fornecida pelo Render.
 > - Endereço: https://programando-o-futuro-4lg4.onrender.com. O Render acrescentou o sufixo `-4lg4` porque o nome simples já estava em uso.
 > - O log de subida confirmou `AMBIENTE=producao`, banco conectado com TLS, nenhuma senha em texto plano, os dois semáforos (geração e lista) e a varredura de jobs.
 > - As migrações rodaram e não precisaram alterar nada, porque o banco é novo e vazio.
