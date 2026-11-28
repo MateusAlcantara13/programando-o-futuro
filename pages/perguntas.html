@@ -45,40 +45,51 @@
     .btn-sair:hover { color: rgba(255,255,255,0.7); }
 
     /* PROGRESS BAR */
+    /* Mesma largura e mesmo eixo da coluna de conteúdo, afastada do cabeçalho */
     .progress-bar-wrap {
       position: relative; z-index: 10;
-      padding: 0 2.5rem;
-      background: rgba(6,11,20,0.9);
+      width: 100%; max-width: 720px;
+      margin: 2rem auto 0;
+      padding: 0 2rem;
+      box-sizing: border-box;
     }
     .progress-segments {
-      display: flex; gap: 6px;
-      padding-top: 1rem;
+      display: flex; align-items: center; gap: 8px;
+      height: 14px;
     }
+    /* Três estados com diferença de cor, de altura e de contorno:
+       concluído = azul sólido; atual = mais alto, contornado em azul claro,
+       com o preenchimento em azul claro; falta = cinza apagado. */
     .progress-segment {
-      flex: 1; height: 6px;
-      background: rgba(255,255,255,0.06);
-      border-radius: 3px; overflow: hidden;
-      transition: background 0.25s ease, box-shadow 0.25s ease;
+      flex: 1; height: 8px;
+      background: rgba(255,255,255,0.09);
+      border-radius: 999px; overflow: hidden;
+      transition: height 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
     }
+    .progress-segment.feito { background: #2563eb; }
     .progress-segment.atual {
-      background: rgba(37,99,235,0.18);
-      box-shadow: 0 0 0 1px rgba(59,130,246,0.5);
+      height: 14px;
+      background: rgba(147,197,253,0.16);
+      box-shadow: 0 0 0 2px #93c5fd;
     }
     .progress-segment-fill {
       width: 0; height: 100%;
       background: #2563eb;
       transition: width 0.25s ease;
     }
-    .progress-segment.atual .progress-segment-fill { background: #3b82f6; }
+    .progress-segment.atual .progress-segment-fill { background: #93c5fd; }
 
     /* MAIN */
+    /* Alinhado pelo topo, e não pelo meio: o rótulo fica no terço superior
+       e a coluna não pula de altura entre perguntas de tamanhos diferentes. */
     main {
-      flex: 1; display: flex; align-items: center; justify-content: center;
-      padding: 2rem; position: relative; z-index: 1;
+      flex: 1; display: flex; align-items: flex-start; justify-content: center;
+      padding: clamp(2rem, 9vh, 5.5rem) 2rem 2rem;
+      position: relative; z-index: 1;
     }
 
     .question-wrap {
-      max-width: 620px; width: 100%;
+      max-width: 720px; width: 100%;
     }
 
     /* A animação de troca de pergunta fica no questionario-api.js
@@ -97,11 +108,33 @@
       .progress-segment, .progress-segment-fill { transition: none; }
     }
 
+    /* Rótulo do bloco: a principal pista de orientação da tela.
+       #93c5fd sobre #060b14 dá contraste de cerca de 11:1. */
     .question-num {
       font-family: 'Plus Jakarta Sans', sans-serif;
-      font-size: 0.68rem; font-weight: 700;
-      color: #3b82f6; letter-spacing: 0.1em; text-transform: uppercase;
-      margin-bottom: 1rem;
+      font-size: 1.05rem; font-weight: 700;
+      color: #93c5fd; letter-spacing: 0;
+      margin-bottom: 0.9rem;
+    }
+
+    /* Número da parte na tela de transição: "2/5" grande */
+    .block-intro-num {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-weight: 800; line-height: 1;
+      letter-spacing: -0.03em;
+      margin-bottom: 1.25rem;
+    }
+    .block-intro-num .parte-atual {
+      font-size: clamp(4rem, 11vw, 6rem);
+      color: #93c5fd;
+    }
+    .block-intro-num .parte-total {
+      font-size: clamp(2rem, 5.5vw, 3rem);
+      color: rgba(255,255,255,0.35);
+    }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
     }
     .question-text {
       font-family: 'Plus Jakarta Sans', sans-serif;
@@ -202,7 +235,9 @@
 
     @media (max-width: 600px) {
       .test-nav { padding: 1rem 1.2rem; }
-      .progress-bar-wrap { padding: 0 1.2rem; }
+      .progress-bar-wrap { padding: 0 1.2rem; margin-top: 1.25rem; }
+      main { padding: 1.75rem 1.2rem 1.5rem; }
+      .question-num { font-size: 0.95rem; }
       .question-text { font-size: 1.2rem; }
       .option-btn { font-size: 0.82rem; padding: 0.85rem 1rem; }
       .block-intro-text { font-size: 0.92rem; }
@@ -250,7 +285,7 @@
     <div class="question-wrap">
       <!-- Tela de transição entre blocos -->
       <section class="block-intro" id="blockIntro" hidden>
-        <div class="question-num font-jakarta" id="blockIntroEyebrow"></div>
+        <div class="block-intro-num font-jakarta" id="blockIntroEyebrow"></div>
         <h2 class="question-text font-jakarta" id="blockIntroTitle"></h2>
         <p class="block-intro-text font-manrope" id="blockIntroText"></p>
         <div class="nav-btns">
