@@ -1,6 +1,25 @@
 # Programando o Futuro — Plano do Segundo Semestre de 2026
 
-> [!CAUTION]
+> [!NOTE]
+> **Deploy religado em 28/11/2026.** O aviso "NÃO RELIGAR O DEPLOY" cumpriu o papel dele e fica abaixo, marcado como cumprido.
+>
+> **O que aconteceu em 28/11/2026:**
+> - Serviço novo no Render, criado do zero, porque o antigo não existia mais na conta. Plano gratuito, região Oregon, pasta raiz `backend`, start com uvicorn na porta fornecida pelo Render.
+> - Endereço: https://programando-o-futuro-4lg4.onrender.com. O Render acrescentou o sufixo `-4lg4` porque o nome simples já estava em uso.
+> - O log de subida confirmou `AMBIENTE=producao`, banco conectado com TLS, nenhuma senha em texto plano, os dois semáforos (geração e lista) e a varredura de jobs.
+> - As migrações rodaram e não precisaram alterar nada, porque o banco é novo e vazio.
+> - **Auto-Deploy "On Commit" ligado:** todo merge na `main` publica em produção sozinho. Ver "Regras de Git" no `CLAUDE.md`.
+> - A CA do projeto Aiven novo foi colocada no Render como Secret File, em `/etc/secrets/ca-aiven.pem`, e a variável `DB_SSL_CA` aponta para esse caminho absoluto.
+> - No mesmo dia rodou o primeiro teste de ponta a ponta em produção: ver "Teste de ponta a ponta em produção" na Fase 0, abaixo.
+>
+> **Pendências abertas depois da subida:**
+> - **`backend/ca.pem` desatualizado.** O arquivo versionado continua sendo a CA do projeto Aiven **antigo**. Em produção isso não quebra, porque o `DB_SSL_CA` aponta para o Secret File. Mas quem clonar o repositório e tentar conectar no banco de produção com a configuração padrão vai falhar: sem `DB_SSL_CA`, o código usa o `backend/ca.pem`, e essa CA não valida o certificado do serviço novo. Solução definitiva: substituir o `backend/ca.pem` pela CA nova e commitar. Não foi feito em 28/11/2026 porque o arquivo não estava na máquina usada.
+> - **IP allowlist do banco** ainda em "Open to all". Restringir aos IPs de saída do Render.
+> - **Trial do Aiven vence por volta de 26/12/2026**, e o serviço desliga sozinho sem cartão cadastrado: ver "Riscos conhecidos".
+> - **`JWT_SECRET` e `ADMIN_SECRET` (pré-requisito b, abaixo).** Os valores atuais foram gerados pelo Render, então são novos em relação aos do histórico do Git. Mas apareceram na tela durante a configuração e passaram por uma conversa com assistente de IA, o que é uma exposição nova, menor mas real. Fecha quando os dois forem gerados de novo no Render, pelo botão Generate, e salvos.
+>
+> **Aviso anterior, que cumpriu o papel em 28/11/2026. Os itens b) e e) continuam abertos:**
+>
 > **NÃO RELIGAR O DEPLOY antes de cumprir, um a um, os quatro pré-requisitos abaixo.**
 > Pendência da reconexão do deploy, registrada em 26/11/2026 e atualizada no mesmo dia.
 >
@@ -12,10 +31,10 @@
 >
 > **Pré-requisitos que faltam:**
 > - **a) [Não se aplica ao banco novo, que está vazio. Mantido para o caso de algum dia migrar dados de outro banco.]** **Conferir no Aiven se existe linha com `aceite_lgpd` nulo** (`SELECT COUNT(*) FROM usuarios WHERE aceite_lgpd IS NULL`). Se existir, a migração do Bloco 3 (`backend/migracoes/usuarios_aceite_lgpd.py`) para a aplicação de propósito, e isso vai parecer deploy quebrado para quem não souber. A migração não inventa valor de consentimento: decidir antes o que essas linhas significam.
-> - **b) `JWT_SECRET` e `ADMIN_SECRET` novos.** Os antigos tiveram valor padrão escrito no código e estão no histórico público do Git. Mover os valores antigos para variável de ambiente não resolve.
-> - **c) `CORS_ORIGENS` configurada.** Com `AMBIENTE=producao`, sem ela a aplicação não sobe.
-> - **d) `DB_SSL_CA` e verificação de hostname.** A CA do provedor do banco configurada, e a verificação de hostname e a consulta a `Ssl_cipher` conferidas contra o banco de produção, que tem TLS. O banco local roda sem TLS, então nada disso foi testado aqui. Com o banco novo, o `backend/ca.pem` do repositório não serve: ele é a CA do projeto antigo.
-> - **e) Depois que o deploy subir: restringir o IP allowlist do banco**, hoje em "Open to all", aos IPs de saída do Render.
+> - **b) [Aberto em 28/11/2026. Os valores foram gerados pelo Render e são novos em relação aos do histórico do Git, mas foram expostos na configuração. Fecha quando os dois forem gerados de novo pelo botão Generate do Render e salvos.]** **`JWT_SECRET` e `ADMIN_SECRET` novos.** Os antigos tiveram valor padrão escrito no código e estão no histórico público do Git. Mover os valores antigos para variável de ambiente não resolve.
+> - **c) [Cumprido em 28/11/2026: com `AMBIENTE=producao` a aplicação só sobe com a variável definida, e ela subiu.]** **`CORS_ORIGENS` configurada.** Com `AMBIENTE=producao`, sem ela a aplicação não sobe.
+> - **d) [Cumprido em 28/11/2026 no caminho em que tudo está certo: CA nova pelo Secret File, hostname verificado (`check_hostname` fica ligado) e `Ssl_cipher` preenchido, porque a aplicação recusa subir com ele vazio. Os testes de recusa, com CA errada e com nome de servidor errado, não foram feitos contra o banco de produção.]** **`DB_SSL_CA` e verificação de hostname.** A CA do provedor do banco configurada, e a verificação de hostname e a consulta a `Ssl_cipher` conferidas contra o banco de produção, que tem TLS. O banco local roda sem TLS, então nada disso foi testado aqui. Com o banco novo, o `backend/ca.pem` do repositório não serve: ele é a CA do projeto antigo.
+> - **e) [Continua aberto em 28/11/2026: ver as pendências acima.]** **Depois que o deploy subir: restringir o IP allowlist do banco**, hoje em "Open to all", aos IPs de saída do Render.
 >
 > **Já cumprido em 26/11/2026:** os oito testes de MySQL rodaram contra MySQL 8.0.46 local (`127.0.0.1`) e passaram, e depois contra MySQL 8.4.13 local, a mesma série do banco novo, com o mesmo número de verificações. O teste de carga com 15 alunos ao mesmo tempo também passou, mas com a espera da IA simulada encurtada; ver a ressalva na Fase 1 do `ROADMAP.md`, que diz o que ele validou e o que não validou.
 >
@@ -112,7 +131,7 @@ Durante esta semana, os pull requests são aprovados pelo próprio autor. Quando
 
 Os três trabalham juntos nesta semana. É a única fase sem paralelismo, porque são correções curtas e interdependentes e porque todo mundo precisa entender o que foi exposto.
 
-**Deploy desligado.** Desde 08/10/2026 o sistema não roda no Render. A `main` não publica nada, e a validação de cada PR acontece no ambiente local com Docker. O deploy volta na última tarefa desta fase, depois que todas as outras estiverem fechadas e o banco de produção resolvido.
+**Deploy desligado de 08/10/2026 a 28/11/2026.** Nesse período o sistema não rodou no Render, a `main` não publicava nada, e a validação de cada PR acontecia no ambiente local com Docker. O deploy voltou em 28/11/2026, num serviço novo: ver o aviso no topo e "Como ficou em 28/11/2026", na reconexão do deploy, abaixo.
 
 | Tarefa | Responsável | Critério de conclusão |
 |---|---|---|
@@ -129,7 +148,7 @@ Os três trabalham juntos nesta semana. É a única fase sem paralelismo, porque
 | Remover a senha guardada no `localStorage` dos navegadores | Yago | Nenhuma página do site deixa o campo `senha` dentro de `pf_user` depois de carregar |
 | Front chama a API pela origem da própria página, sem endereço fixo | Yago | Nenhum endereço de servidor escrito no front, e o mesmo código funciona no backend local e em produção |
 | Documentar o ambiente local no repositório | Mateus | Ricardo sobe o sistema na própria máquina seguindo só o documento, sem perguntar nada a ninguém. **Ambiente criado em 01/11/2026 (PR #5). Falta a verificação pelo Ricardo** |
-| Reconectar o deploy no Render | Mateus | Merge na `main` volta a publicar, com o banco de produção definido e todas as tarefas acima fechadas |
+| Reconectar o deploy no Render | Mateus | Merge na `main` volta a publicar, com o banco de produção definido e todas as tarefas acima fechadas. **No ar desde 28/11/2026, num serviço novo.** Auto-Deploy "On Commit" ligado: merge na `main` publica sozinho. A verificação do ambiente local pelo Ricardo ainda estava aberta |
 
 A senha `25107Senai` está no código-fonte público hoje. Ela precisa ser trocada, não apenas movida para variável de ambiente.
 
@@ -171,28 +190,45 @@ Como verificar: Ricardo segue o documento numa máquina onde o ambiente nunca fo
 
 **Reconexão do deploy.** Última tarefa da fase, só depois de todas as outras fechadas e do banco de produção resolvido. Antes de reconectar: confirmar no painel do Render que o serviço aponta para `MateusAlcantara13/programando-o-futuro`; cadastrar as variáveis de ambiente de produção, já sem nenhum valor padrão no código; usar `DB_SSL_MODE=verificar` com a CA do provedor novo; e confirmar que a `ADMIN_SECRET` foi trocada. Depois de reconectar, o `CLAUDE.md` volta a dizer que merge na `main` publica em produção.
 
+**Como ficou em 28/11/2026.** O serviço antigo não existia mais na conta do Render, então o deploy voltou num serviço criado do zero, sem reaproveitar configuração: plano gratuito, região Oregon, pasta raiz `backend`, start com uvicorn na porta fornecida pelo Render, endereço https://programando-o-futuro-4lg4.onrender.com. O `DB_SSL_MODE=verificar` do plano acima não existe no código desde o PR #5: o TLS fica ligado por não haver `DB_SSL_DISABLED`, e a CA nova vem do Secret File `/etc/secrets/ca-aiven.pem`. O serviço está com Auto-Deploy "On Commit", então merge na `main` publica em produção sozinho, e o `CLAUDE.md` diz isso com destaque em "Regras de Git". O que o log de subida mostrou e as pendências estão no aviso do topo.
+
 **Banco de produção novo (26/11/2026).**
 - O banco antigo do Aiven não existe mais. Foi criado um projeto e um serviço novos no Aiven, MySQL 8.4, hospedado no DigitalOcean (região nyc), com o banco **vazio**.
 - **Os dados de maio não existem mais**: usuários, respostas, planos e jobs da validação com os 31 alunos.
 - Por isso, o pré-requisito a do aviso do topo (`aceite_lgpd` nulo) e a migração de senhas em texto plano não se aplicam a este banco, porque não há linha nenhuma. A pendência 2 do Bloco 3, sobre os usuários com aceite anterior a 26/11/2026, também deixa de valer.
-- A CA muda com o projeto novo: o `backend/ca.pem` do repositório é a do projeto antigo, e o `DB_SSL_CA` precisa apontar para a do novo.
-- **Pendência:** o IP allowlist do banco está em "Open to all". Restringir aos IPs de saída do Render depois que o deploy subir.
+- A CA muda com o projeto novo: o `backend/ca.pem` do repositório é a do projeto antigo, e o `DB_SSL_CA` precisa apontar para a do novo. **Em 28/11/2026** a CA nova foi para o Render como Secret File. O `backend/ca.pem` continua sendo o antigo, o que é pendência registrada no aviso do topo.
+- **Pendência:** o IP allowlist do banco está em "Open to all". Restringir aos IPs de saída do Render depois que o deploy subir. **Continua aberta em 28/11/2026,** com o deploy já no ar.
+- **Desde 28/11/2026 o banco deixou de estar vazio:** tem a conta, as respostas e o plano criados no teste de ponta a ponta.
 - **Cobertura dos testes:** os oito testes de MySQL agora rodam no 8.0.46 e no 8.4.13, a mesma série do banco novo, e passaram nos dois com o mesmo número de verificações. Eles continuam sem cobrir TLS e a caixa de nomes de tabela (ver "Riscos conhecidos").
 - O risco do vencimento do trial está em "Riscos conhecidos".
+
+**Teste de ponta a ponta em produção (28/11/2026).** Primeira evidência do sistema funcionando em produção, feita logo depois da subida, por uma pessoa, sem concorrência. O que ele provou:
+- Cadastro com aceite da LGPD real, marcado na caixa e gravado no banco.
+- Login com o token em `sessionStorage` e o `localStorage` vazio.
+- Questionário completo, do começo ao fim.
+- Plano gerado em cerca de 90 segundos.
+- Prazos ancorados em 2027, e não em 2026, o que mostra a data de hoje chegando ao prompt.
+- Instituições coerentes com a cidade informada.
+- Status das etapas calculado no backend.
+- **O progresso do mapa persistindo no servidor** e voltando depois de apagar o cache do navegador. Isso nunca tinha funcionado no projeto: ver o achado de 26/11/2026 sobre o progresso do mapa, abaixo.
+
+O que ele não provou: comportamento com vários alunos ao mesmo tempo. Os 90 segundos são uma geração isolada, na mesma faixa das medições locais de 01/11/2026 (94 a 101 s), e não dizem nada sobre o timeout sob carga. O teste de carga com a espera real continua pendente (ver a ressalva na Fase 1).
+
+O teste também encontrou um defeito: a pergunta 13 pede "Escolha até 2 opções", mas a interface só aceita uma. Registrado em "Problemas conhecidos" no `CLAUDE.md`.
 
 Cinco pendências descobertas em 01/11/2026, também antes de reconectar:
 
 1. Gerar um `JWT_SECRET` aleatório e fazer a aplicação recusar subir em produção sem a variável definida. Faz parte da tarefa de remover os valores padrão de segredo, ver acima.
 2. Conferir o `DB_SSL_CA`. O valor padrão é um caminho relativo à raiz do repositório (`backend/ca.pem`), mas o backend roda de dentro de `backend/`, então esse caminho não encontra o arquivo.
-3. Confirmar a verificação de hostname do certificado contra o banco novo, com os testes (3) a (5) da configuração de TLS. Ela foi ativada no PR #5, mas não pôde ser testada, porque o banco local roda sem TLS.
-4. Implementar a consulta a `Ssl_cipher` na inicialização, que estava no plano da tarefa de TLS e ficou de fora do PR #5. Sem ela, a aplicação não tem como confirmar que o TLS está ativo em produção, só supor. A limitação descrita na hipótese acima continua: a consulta cobre a conexão da inicialização, e não as abertas depois pelo pool.
+3. Confirmar a verificação de hostname do certificado contra o banco novo, com os testes (3) a (5) da configuração de TLS. Ela foi ativada no PR #5, mas não pôde ser testada, porque o banco local roda sem TLS. **Confirmada em 28/11/2026 no caso positivo (3):** a aplicação conectou no banco novo com a CA nova. Os casos de recusa (4) e (5) não foram testados contra a produção.
+4. **Implementada (`backend/main.py`, `SHOW SESSION STATUS LIKE 'Ssl_cipher'`) e confirmada na subida de 28/11/2026.** Implementar a consulta a `Ssl_cipher` na inicialização, que estava no plano da tarefa de TLS e ficou de fora do PR #5. Sem ela, a aplicação não tem como confirmar que o TLS está ativo em produção, só supor. A limitação descrita na hipótese acima continua: a consulta cobre a conexão da inicialização, e não as abertas depois pelo pool.
 5. Criar uma variável de ambiente que identifique onde a aplicação está rodando, para que os modos perigosos se recusem a ligar em produção em vez de só avisar no log. Hoje o código não tem como saber se está em produção, e três pontos dependem de ninguém esquecer uma variável: o `JWT_SECRET` com valor padrão, o `DB_SSL_DISABLED` e o `IA_SIMULADA`.
 
 **Achado de 26/11/2026: o progresso do mapa de carreira nunca foi salvo no servidor, desde o começo do projeto.** Duas falhas independentes impediam isso:
 - `mapa_progresso.usuario_id` era `INT` e recebia o UUID do aluno, que é texto. Com o MySQL em modo estrito, o INSERT dava erro. Sem modo estrito, o UUID virava número e alunos diferentes dividiam a mesma linha. Isso valia também para a produção, inclusive na validação de maio. Corrigido no Bloco 2 (PR #10).
 - A página `mapa_carreira.html` lia `window.API_URL`, que nunca existiu, porque `const` não vira propriedade de `window`. Com isso, ela sempre caía no endereço do Render escrito à mão. Com o backend rodando local, as chamadas iam para o Render, e desde 08/10/2026, com o deploy desligado, falhavam na rede. Corrigido no Bloco 3.
 
-Além disso, a falha do POST era engolida por um `catch` vazio. O aluno via o visto na tela e nunca era avisado de que nada tinha sido salvo. O progresso existia só no navegador de cada máquina. Consequência: o acompanhamento (Bloco 6) começa do zero. Não existe histórico de progresso de nenhum aluno, nem dos 31 da validação de maio. Que os dois consertos destravaram o caminho é hipótese até `backend/testes/teste_mapa_progresso.py` rodar com MySQL.
+Além disso, a falha do POST era engolida por um `catch` vazio. O aluno via o visto na tela e nunca era avisado de que nada tinha sido salvo. O progresso existia só no navegador de cada máquina. Consequência: o acompanhamento (Bloco 6) começa do zero. Não existe histórico de progresso de nenhum aluno, nem dos 31 da validação de maio. Que os dois consertos destravaram o caminho é hipótese até `backend/testes/teste_mapa_progresso.py` rodar com MySQL. **Confirmado em 28/11/2026, em produção:** no teste de ponta a ponta, o progresso foi salvo no servidor e voltou depois de apagar o cache do navegador.
 
 **Pendências registradas em 26/11/2026 (Bloco 3, dados e front).**
 
@@ -200,7 +236,7 @@ Além disso, a falha do POST era engolida por um `catch` vazio. O aluno via o vi
 2. **Usuários com aceite anterior a 26/11/2026.** Eles têm `aceite_lgpd = 1` e `aceite_lgpd_em` NULL, porque o front mandava o aceite fixo, sem o aluno marcar nada. Falta decidir se esses usuários precisam ler e aceitar o termo no próximo login. Não implementado.
 3. **Texto do termo da LGPD.** A versão `2026-11-26` é rascunho e precisa de revisão do orientador antes de ser usada com alunos. Ela está em `TERMO_LGPD_PARAGRAFOS`, em `backend/main.py`. Qualquer mudança no texto exige versão nova em `TERMO_LGPD_VERSAO`.
 4. **Remover o caminho de senha em texto plano.** Apagar o trecho de texto plano de `verificar_senha` e a conversão em hash dentro de `login()` quando a métrica "Senhas sem hash" do painel admin chegar a zero. Antes disso, quem ainda não migrou fica trancado fora da conta.
-5. **`CORS_ORIGENS` na reconexão do deploy.** Com `AMBIENTE=producao`, a aplicação não sobe sem essa variável. Ela entra na lista de variáveis de produção.
+5. **`CORS_ORIGENS` na reconexão do deploy.** Com `AMBIENTE=producao`, a aplicação não sobe sem essa variável. Ela entra na lista de variáveis de produção. **Cumprida em 28/11/2026:** a aplicação subiu em produção.
 6. **Rascunhos de resposta em `sessionStorage`.** Fechar o navegador no meio de um módulo apaga o rascunho guardado no navegador. As respostas que já foram enviadas ao backend continuam salvas. Uma aba nova também começa sem sessão. Foi escolhido assim para o próximo aluno na mesma máquina não ver nada do anterior.
 7. **Aluno que levanta sem clicar em Sair.** O `sessionStorage` só é apagado ao sair ou ao fechar o navegador. Se o aluno deixa a aba aberta, o próximo que sentar usa a conta dele até o token vencer (`JWT_EXPIRES_H`, hoje 24 h). Opções a avaliar: saída automática por inatividade no front e um prazo de token menor. Não implementado.
 
@@ -351,6 +387,7 @@ Toda decisão de arquitetura entra nesta tabela, com data, quem decidiu e por qu
 | 26/11/2026 | Cidade do aluno no prompt vinda do perfil (`usuarios.cidade`) ou da pergunta 3 do teste, sem campo novo no cadastro. Coleta mínima: cidade e estado, nunca endereço. **Precedência: o perfil ganha da pergunta 3**, e a pergunta 3 só é usada quando o perfil está vazio | O plano recomenda instituições e precisa saber o que é alcançável. A pergunta 3 já pede cidade e estado como obrigatória, e pedir de novo no cadastro seria coletar duas vezes o mesmo dado pessoal de um menor de idade. O perfil ganha porque o aluno pode editá-lo depois do teste, então ele é o dado mais recente. Não inverter achando que a resposta do teste é mais confiável. Limitação aceita: o plano é uma foto do momento da geração, e mudar a cidade depois não muda o plano (pendência 7 do Bloco 5) | Mateus |
 | 26/11/2026 | O status de cada passo do mapa é calculado no backend a partir do progresso salvo, e qualquer status vindo da IA é descartado. O schema deixa de pedir `status` e passa a pedir `dataLimite`. A data de conclusão é gravada pelo servidor e nunca vem do navegador. Antecipado da unificação das semanas 10 e 11 | A IA não tem como saber o que o aluno fez: o `locked` dela impedia o aluno de marcar um passo feito, e o `done` mostrava como concluído o que ninguém marcou. Pedir um campo que vai ser descartado gasta token e convida a IA a inventar. Sem uma data comparável, um passo vencido ficaria pendente para sempre | Mateus |
 | 26/11/2026 | Todo dado do sistema no navegador (chaves `pf_*`) fica em `sessionStorage`, não em `localStorage`. Sair e sessão expirada apagam tudo. Na primeira carga, o código apaga o que versões antigas deixaram em `localStorage`. Página que volta do cache do navegador (botão Voltar) sem sessão é trocada pela tela inicial. O progresso do mapa também fica em `sessionStorage`, mas só como cache: ver a decisão seguinte | Os alunos usam computadores compartilhados da escola. Nenhuma senha era gravada, mas o token, o perfil e os rascunhos com texto livre ficavam para o próximo aluno, e os rascunhos apareciam preenchidos na tela dele | Mateus |
+| 28/11/2026 | Sobreposição de instâncias no deploy tratada como inexistente enquanto o serviço do Render estiver no plano gratuito. Nada muda no código. **Reabrir no dia em que o serviço subir para um plano pago** | A tela de planos do Render lista "Zero Downtime" como recurso exclusivo dos planos pagos. Sem zero downtime, a instância antiga é derrubada antes de a nova subir, então não existe janela com duas instâncias vivas, e a recuperação de jobs na inicialização não tem como pegar job de uma instância que ainda está trabalhando. Evidência: a documentação do plano, e não a observação de um deploy no log. No plano pago, o deploy passa a ser sem downtime, as duas instâncias convivem durante a troca e a mesma geração pode ser paga duas vezes | Mateus |
 
 ## 10. Ideias fora de escopo
 
@@ -365,15 +402,15 @@ Lista de estacionamento. Nada aqui é trabalhado neste semestre. Revisão em dez
 
 ## 11. Riscos conhecidos
 
-**O plano gratuito do Render hiberna.** O deploy está desligado desde 08/10/2026, e este risco volta com a reconexão no fim da Fase 0. A hibernação reinicia o processo e é a causa provável de job travado. A rotina de recuperação da Fase 1 trata o sintoma. A causa só sai com plano pago, o que está fora do orçamento.
+**O plano gratuito do Render hiberna.** O deploy ficou desligado de 08/10/2026 a 28/11/2026, e este risco voltou com a reconexão. A hibernação reinicia o processo e é a causa provável de job travado. A rotina de recuperação da Fase 1 trata o sintoma. A causa só sai com plano pago, o que está fora do orçamento.
 
-**Sobreposição de instâncias no deploy.** Na inicialização, a recuperação de job travado reenfileira todo job em `processando` com heartbeat anterior ao início do processo, porque assume que o processo anterior morreu. Se a instância antiga ainda estiver atendendo durante um deploy, os jobs dela também são pegos e a geração é paga duas vezes. Hoje há uma instância só. Pendência da reconexão do deploy: conferir se o Render mantém as duas instâncias no ar durante a troca e, se mantiver, tratar isso antes de religar.
+**Sobreposição de instâncias no deploy. [Fechado em 28/11/2026 enquanto o serviço estiver no plano gratuito: ver o registro de decisões.]** Na inicialização, a recuperação de job travado reenfileira todo job em `processando` com heartbeat anterior ao início do processo, porque assume que o processo anterior morreu. Se a instância antiga ainda estiver atendendo durante um deploy, os jobs dela também são pegos e a geração é paga duas vezes. Hoje há uma instância só. Pendência da reconexão do deploy: conferir se o Render mantém as duas instâncias no ar durante a troca e, se mantiver, tratar isso antes de religar. **Volta a ser risco no dia em que o serviço subir para um plano pago.**
 
 **Três pessoas em vez de cinco.** O cronograma já considera isso, mas não há folga real. Se a Fase 2 atrasar, a verificação de instituições da semana 12 é o primeiro item a ser cortado.
 
 **A reestruturação do schema é a mudança mais arriscada do semestre.** Ela toca prompt, backend e quatro telas ao mesmo tempo. É por isso que ela vem depois dos testes e não antes.
 
-**O trial do Aiven vence por volta de 26/12/2026, e o serviço desliga sozinho.** Registrado em 26/11/2026. Sem cartão cadastrado, o serviço do banco desliga no fim do trial. Foi o mesmo motivo pelo qual o banco anterior sumiu, levando os dados de maio. E dezembro é justamente quando o sistema roda na escola. Isto é risco, e não pendência comum: se ninguém agir antes, o sistema perde o banco no meio do uso com os alunos. Decidir antes de 26/12/2026 entre cadastrar forma de pagamento, migrar para outro provedor com prazo conhecido ou exportar os dados de forma periódica.
+**O trial do Aiven vence por volta de 26/12/2026, e o serviço desliga sozinho.** Registrado em 26/11/2026. Sem cartão cadastrado, o serviço do banco desliga no fim do trial. Foi o mesmo motivo pelo qual o banco anterior sumiu, levando os dados de maio. E dezembro é justamente quando o sistema roda na escola. Isto é risco, e não pendência comum: se ninguém agir antes, o sistema perde o banco no meio do uso com os alunos. Decidir antes de 26/12/2026 entre cadastrar forma de pagamento, migrar para outro provedor com prazo conhecido ou exportar os dados de forma periódica. **Conferido em 28/11/2026:** continua aberto, e agora com o sistema no ar.
 
 **`lower_case_table_names` diferente entre o teste local e a produção.** Os testes de 26/11/2026 rodaram num MySQL 8.0.46 e num 8.4.13, os dois em Windows, onde `lower_case_table_names` vale 1: nomes de tabela são guardados em minúsculas e comparados sem diferenciar maiúsculas. Em Linux, que é onde o Aiven roda, o padrão é 0, que diferencia (conferir o valor no Aiven). Um nome de tabela escrito em caixa errada no código passa no teste local e quebra na produção, e nenhum teste daqui pega isso. Hoje o código usa só minúsculas. Rodar os testes num MySQL em Linux fecharia essa lacuna.
 
