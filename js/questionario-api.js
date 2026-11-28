@@ -13,6 +13,120 @@
   const params = new URLSearchParams(window.location.search);
   const qParam = parseInt(params.get('q'), 10);
 
+  // ── Blocos do teste inicial ────────────────────────────────────────────────
+  // As perguntas do teste inicial trazem o campo "bloco". As dos módulos não
+  // trazem, e as páginas dos módulos não têm a barra segmentada: lá o modo
+  // blocos fica desligado e tudo funciona como antes.
+  //
+  // Texto da tela de transição mostrada ANTES de cada bloco, a partir do
+  // segundo. A chave é o nome do bloco exatamente como vem da API. Bloco sem
+  // texto aqui ganha a tela só com o nome.
+  const TEXTOS_BLOCO = {
+    'Sua situação financeira':
+      'Agora algumas perguntas sobre dinheiro e estrutura: renda da família, trabalho, mensalidade e acesso a computador e internet. Ninguém aqui está te avaliando. Com isso o plano mostra bolsas, financiamentos e cursos gratuitos que cabem na sua realidade.',
+    'Onde você quer chegar':
+      'Hora de falar do que você quer: até onde consegue se deslocar, em quanto tempo quer trabalhar na sua área e o que pesa mais para você. É assim que o plano decide quais caminhos entram e em que ordem.',
+    'Quem você é por dentro':
+      'Agora é sobre o seu jeito: o que você faz por conta própria, como encara um problema e onde se sai bem. Não tem resposta certa. Responda o que é verdade para você, porque é daqui que saem as áreas que combinam com você.',
+    'Seu contexto de vida':
+      'Falta pouco. Estas perguntas olham para o que você já viveu fora da escola, para o que te trava na hora de escolher e para a sua abertura a caminhos novos. Assim o plano começa de onde você está hoje.',
+  };
+
+  let blocos = [];          // [{ nome, inicio, fim }], índices a partir de 0
+  let modoBlocos = false;
+  let navegando = false;    // impede clique duplo durante a animação
+  const reduzirMovimento = window.matchMedia
+    ? window.matchMedia('(prefers-reduced-motion: reduce)')
+    : null;
+
+  function montarBlocos() {
+    blocos = [];
+    perguntas.forEach((q, i) => {
+      const ultimo = blocos[blocos.length - 1];
+      if (ultimo && ultimo.nome === q.bloco) ultimo.fim = i;
+      else blocos.push({ nome: q.bloco, inicio: i, fim: i });
+    });
+    modoBlocos = Boolean(document.getElementById('progressSegments'))
+      && perguntas.length > 0
+      && perguntas.every((q) => q.bloco);
+  }
+
+  // n começa em 1, como currentQ.
+  function blocoDaPergunta(n) {
+    const i = n - 1;
+    const indice = blocos.findIndex((b) => i >= b.inicio && i <= b.fim);
+    const b = blocos[indice];
+    return { indice, nome: b.nome, posicao: i - b.inicio + 1, tamanho: b.fim - b.inicio + 1 };
+  }
+
+  function renderProgressoBlocos(indiceAtual, fracaoAtual) {
+    const wrap = document.getElementById('progressSegments');
+    if (wrap.children.length !== blocos.length) {
+      wrap.innerHTML = '';
+      blocos.forEach((b) => {
+        const seg = document.createElement('div');
+        seg.className = 'progress-segment';
+        seg.title = b.nome;
+        const fill = document.createElement('div');
+        fill.className = 'progress-segment-fill';
+        seg.appendChild(fill);
+        wrap.appendChild(seg);
+      });
+    }
+    Array.from(wrap.children).forEach((seg, i) => {
+      seg.classList.toggle('feito', i < indiceAtual);
+      seg.classList.toggle('atual', i === indiceAtual);
+      const fracao = i < indiceAtual ? 1 : (i === indiceAtual ? fracaoAtual : 0);
+      seg.firstChild.style.width = `${Math.round(fracao * 100)}%`;
+    });
+    wrap.setAttribute('aria-valuemin', '0');
+    wrap.setAttribute('aria-valuemax', String(blocos.length));
+    wrap.setAttribute('aria-valuenow', String(indiceAtual + fracaoAtual));
+    wrap.setAttribute('aria-valuetext', `Parte ${indiceAtual + 1} de ${blocos.length}: ${blocos[indiceAtual].nome}`);
+  }
+
+  function mostrarIntroBloco(indice) {
+    const b = blocos[indice];
+    document.getElementById('questionCard').hidden = true;
+    document.getElementById('blockIntro').hidden = false;
+    document.getElementById('blockIntroEyebrow').textContent = `Parte ${indice + 1} de ${blocos.length}`;
+    document.getElementById('blockIntroTitle').textContent = b.nome;
+    document.getElementById('blockIntroText').textContent = TEXTOS_BLOCO[b.nome] || '';
+    renderProgressoBlocos(indice, 0);
+    document.getElementById('blockIntroContinuar').focus();
+  }
+
+  // Saída curta, troca o conteúdo, entrada curta: 110 + 150 = 260 ms no total.
+  // Sem animação com prefers-reduced-motion ou fora do modo blocos.
+  async function trocarTela(trocar, direcao) {
+    const wrap = document.querySelector('.question-wrap');
+    const semAnimacao = !modoBlocos || !wrap || typeof wrap.animate !== 'function'
+      || (reduzirMovimento && reduzirMovimento.matches);
+    if (semAnimacao) {
+      trocar();
+      return;
+    }
+    const d = direcao === 'tras' ? -1 : 1;
+    navegando = true;
+    try {
+      const saida = wrap.animate(
+        [{ opacity: 1, transform: 'translateX(0)' }, { opacity: 0, transform: `translateX(${-16 * d}px)` }],
+        { duration: 110, easing: 'ease-in', fill: 'forwards' }
+      );
+      await saida.finished;
+      trocar();
+      const entrada = wrap.animate(
+        [{ opacity: 0, transform: `translateX(${16 * d}px)` }, { opacity: 1, transform: 'translateX(0)' }],
+        { duration: 150, easing: 'ease-out' }
+      );
+      // O fill da saída manteria o conteúdo invisível depois da entrada.
+      saida.cancel();
+      await entrada.finished;
+    } finally {
+      navegando = false;
+    }
+  }
+
   function perguntaAtual() {
     return perguntas[currentQ - 1];
   }
@@ -118,12 +232,22 @@
     const list = document.getElementById('optionsList');
 
     esconderErro();
-    card.className = 'question-card' + (goingBack ? ' going-back' : '');
-    document.getElementById('questionNum').textContent = `Pergunta ${String(currentQ).padStart(2, '0')}`;
+    if (modoBlocos) {
+      // A animação fica no trocarTela; a classe não muda entre perguntas.
+      card.className = 'question-card';
+      card.hidden = false;
+      document.getElementById('blockIntro').hidden = true;
+      const b = blocoDaPergunta(currentQ);
+      document.getElementById('questionNum').textContent = `${b.nome} — ${b.posicao} de ${b.tamanho}`;
+      renderProgressoBlocos(b.indice, b.posicao / b.tamanho);
+    } else {
+      card.className = 'question-card' + (goingBack ? ' going-back' : '');
+      document.getElementById('questionNum').textContent = `Pergunta ${String(currentQ).padStart(2, '0')}`;
+      document.getElementById('navCurrent').textContent = currentQ;
+      document.getElementById('navTotal').textContent = perguntas.length;
+      document.getElementById('progressBar').style.width = `${(currentQ / perguntas.length) * 100}%`;
+    }
     document.getElementById('questionText').textContent = q.texto;
-    document.getElementById('navCurrent').textContent = currentQ;
-    document.getElementById('navTotal').textContent = perguntas.length;
-    document.getElementById('progressBar').style.width = `${(currentQ / perguntas.length) * 100}%`;
     btnVoltar.disabled = currentQ === 1;
     list.innerHTML = '';
 
@@ -211,19 +335,48 @@
   }
 
   function proximaPergunta() {
+    if (navegando) return;
     const q = perguntaAtual();
     if (!respostaPreenchida(q)) return;
     if (currentQ >= perguntas.length) {
       finalizar();
       return;
     }
+    if (modoBlocos) {
+      const atual = blocoDaPergunta(currentQ);
+      const proximo = blocoDaPergunta(currentQ + 1);
+      if (proximo.indice !== atual.indice) {
+        // currentQ continua na última pergunta do bloco até o aluno continuar.
+        trocarTela(() => mostrarIntroBloco(proximo.indice), 'frente');
+        return;
+      }
+      currentQ++;
+      trocarTela(() => renderPergunta(), 'frente');
+      return;
+    }
     currentQ++;
     renderPergunta(false);
   }
 
+  function continuarBloco() {
+    if (navegando) return;
+    currentQ++;
+    trocarTela(() => renderPergunta(), 'frente');
+  }
+
+  function voltarDaIntro() {
+    if (navegando) return;
+    trocarTela(() => renderPergunta(), 'tras');
+  }
+
   function voltarPergunta() {
+    if (navegando) return;
     if (currentQ <= 1) return;
     currentQ--;
+    if (modoBlocos) {
+      trocarTela(() => renderPergunta(), 'tras');
+      return;
+    }
     renderPergunta(true);
   }
 
@@ -292,6 +445,11 @@
         ? await testeApi.perguntas()
         : await modulosApi.perguntas(moduloId);
       perguntas = data.perguntas || [];
+      montarBlocos();
+      if (modoBlocos) {
+        document.getElementById('blockIntroContinuar').onclick = continuarBloco;
+        document.getElementById('blockIntroVoltar').onclick = voltarDaIntro;
+      }
       currentQ = qParam && qParam >= 1 && qParam <= perguntas.length ? qParam : 1;
       renderPergunta();
     } catch (error) {
