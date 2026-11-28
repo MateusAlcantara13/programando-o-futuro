@@ -168,7 +168,8 @@ Qualidade da saída, previsto para a Fase 3:
 
 Interface, encontrado no teste de ponta a ponta em produção de 28/11/2026:
 
-- A pergunta 13 do questionário diz "Escolha até 2 opções", mas a interface só aceita uma: clicar na segunda desmarca a primeira. A pergunta está definida em `backend/main.py` com `"tipo":"opcoes"`, o mesmo tipo das perguntas de escolha única, e nenhuma pergunta do questionário usa múltipla escolha. Corrigir pede uma decisão antes: mudar o texto para uma opção só, ou criar a múltipla escolha no front e no back, o que muda como a resposta é gravada e como chega ao prompt.
+- **Resolvido em 28/11/2026 (PR #18).** O texto da pergunta 13 passou a pedir uma opção só: "Escolha a opção que mais pesa para você". A múltipla escolha de verdade ficou de fora, porque muda como a resposta é gravada e como chega ao prompt. Texto original:
+  A pergunta 13 do questionário diz "Escolha até 2 opções", mas a interface só aceita uma: clicar na segunda desmarca a primeira. A pergunta está definida em `backend/main.py` com `"tipo":"opcoes"`, o mesmo tipo das perguntas de escolha única, e nenhuma pergunta do questionário usa múltipla escolha. Corrigir pede uma decisão antes: mudar o texto para uma opção só, ou criar a múltipla escolha no front e no back, o que muda como a resposta é gravada e como chega ao prompt.
 
 ## Equipe e áreas
 
