@@ -37,17 +37,6 @@
       font-weight: 700; font-size: 0.95rem; color: #f0f6ff;
       text-decoration: none;
     }
-    .nav-progress-text {
-        display: flex;
-        justify-content: right;
-        margin-right: 5rem;
-        margin-top: 1rem;
-        gap: 0.3rem;
-      font-family: 'Plus Jakarta Sans', sans-serif;
-      font-size: 1rem; font-weight: 700;
-      color: rgba(255,255,255,0.4);
-    }
-    .nav-progress-text span { color: #3b82f6; }
     .btn-sair {
       font-family: 'Manrope', sans-serif;
       font-size: 0.78rem; color: rgba(255,255,255,0.3);
@@ -61,16 +50,26 @@
       padding: 0 2.5rem;
       background: rgba(6,11,20,0.9);
     }
-    .progress-bar-bg {
-      width: 100%; height: 3px;
+    .progress-segments {
+      display: flex; gap: 6px;
+      padding-top: 1rem;
+    }
+    .progress-segment {
+      flex: 1; height: 6px;
       background: rgba(255,255,255,0.06);
-      border-radius: 2px; overflow: hidden;
+      border-radius: 3px; overflow: hidden;
+      transition: background 0.25s ease, box-shadow 0.25s ease;
     }
-    .progress-bar-fill {
-      height: 100%; background: #2563eb;
-      border-radius: 2px;
-      transition: width 0.5s ease;
+    .progress-segment.atual {
+      background: rgba(37,99,235,0.18);
+      box-shadow: 0 0 0 1px rgba(59,130,246,0.5);
     }
+    .progress-segment-fill {
+      width: 0; height: 100%;
+      background: #2563eb;
+      transition: width 0.25s ease;
+    }
+    .progress-segment.atual .progress-segment-fill { background: #3b82f6; }
 
     /* MAIN */
     main {
@@ -82,20 +81,20 @@
       max-width: 620px; width: 100%;
     }
 
-    /* Pergunta */
-    .question-card {
-      animation: fadeSlide 0.4s ease both;
+    /* A animação de troca de pergunta fica no questionario-api.js
+       (trocarTela), com 260 ms no total e desligada em prefers-reduced-motion. */
+    .question-card[hidden], .block-intro[hidden] { display: none; }
+
+    /* Tela de transição entre blocos */
+    .block-intro-text {
+      font-family: 'Manrope', sans-serif;
+      font-size: 1rem; line-height: 1.65;
+      color: rgba(255,255,255,0.6);
+      margin: -1rem 0 2rem;
     }
-    @keyframes fadeSlide {
-      from { opacity: 0; transform: translateX(30px); }
-      to   { opacity: 1; transform: translateX(0); }
-    }
-    @keyframes fadeSlideBack {
-      from { opacity: 0; transform: translateX(-30px); }
-      to   { opacity: 1; transform: translateX(0); }
-    }
-    .question-card.going-back {
-      animation: fadeSlideBack 0.4s ease both;
+
+    @media (prefers-reduced-motion: reduce) {
+      .progress-segment, .progress-segment-fill { transition: none; }
     }
 
     .question-num {
@@ -206,16 +205,7 @@
       .progress-bar-wrap { padding: 0 1.2rem; }
       .question-text { font-size: 1.2rem; }
       .option-btn { font-size: 0.82rem; padding: 0.85rem 1rem; }
-         .nav-progress-text {
-        display: flex;
-        justify-content: right;
-        margin-right: 2rem;
-        margin-top: 1rem;
-        gap: 0.3rem;
-      font-family: 'Plus Jakarta Sans', sans-serif;
-      font-size: 0.7rem; font-weight: 700;
-      color: rgba(255,255,255,0.4);
-    }
+      .block-intro-text { font-size: 0.92rem; }
     }
 
     @media (max-width: 400px) {
@@ -250,19 +240,35 @@
     <a href="inicial_mapa_feito.html" class="btn-sair font-manrope">Salvar e Sair</a>
   </nav>
 
-  <!-- PROGRESS BAR -->
+  <!-- PROGRESSO: um segmento por bloco, montado pelo questionario-api.js -->
   <div class="progress-bar-wrap">
-    <div class="progress-bar-bg">
-      <div class="progress-bar-fill" id="progressBar" style="width: 10%"></div>
-    </div>
+    <div class="progress-segments" id="progressSegments" role="progressbar" aria-label="Progresso do teste"></div>
   </div>
-      <span class="nav-progress-text font-jakarta">
-      Pergunta <span id="navCurrent">1</span> de <span id="navTotal">10</span>
-    </span>
 
   <!-- MAIN -->
   <main>
     <div class="question-wrap">
+      <!-- Tela de transição entre blocos -->
+      <section class="block-intro" id="blockIntro" hidden>
+        <div class="question-num font-jakarta" id="blockIntroEyebrow"></div>
+        <h2 class="question-text font-jakarta" id="blockIntroTitle"></h2>
+        <p class="block-intro-text font-manrope" id="blockIntroText"></p>
+        <div class="nav-btns">
+          <button type="button" class="btn-voltar font-jakarta" id="blockIntroVoltar">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path d="M19 12H5M12 5l-7 7 7 7"/>
+            </svg>
+            Voltar
+          </button>
+          <button type="button" class="btn-proximo enabled font-jakarta" id="blockIntroContinuar">
+            Continuar
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </button>
+        </div>
+      </section>
+
       <div class="question-card" id="questionCard">
 
         <div class="question-num font-jakarta" id="questionNum">Pergunta 01</div>

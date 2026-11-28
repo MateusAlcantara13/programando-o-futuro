@@ -495,7 +495,7 @@ PERGUNTAS_TESTE = [
         {"letra":"C","texto":"Entre 3 e 5 anos (graduação)"},
         {"letra":"D","texto":"Mais de 5 anos (graduação + pós)"},
     ]},
-    {"id":"13","bloco":"Onde você quer chegar","texto":"O que é mais importante para você na carreira? Escolha até 2 opções.","tipo":"opcoes","opcoes":[
+    {"id":"13","bloco":"Onde você quer chegar","texto":"O que é mais importante para você na carreira? Escolha a opção que mais pesa para você.","tipo":"opcoes","opcoes":[
         {"letra":"A","texto":"Ganhar bem"},
         {"letra":"B","texto":"Ter estabilidade"},
         {"letra":"C","texto":"Ajudar pessoas"},
